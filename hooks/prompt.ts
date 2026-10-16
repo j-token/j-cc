@@ -22,18 +22,10 @@ export const LANGUAGE_NOTE =
 export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
 export const ROUTING = `# Tool routing
-Dedicated tools beat shell equivalents: their output is structured, they respect permissions, and only Edit/Write changes can be undone with /rewind.
-- View a file: Read (offset/limit for large files), not cat/head/sed -n/Get-Content. tail for the end of a log is fine.
-- Find files by name: Glob. Search contents: Grep. Not find/grep/rg/ls -R/Select-String.
-- Create or overwrite: Write. Change: Edit (replace_all for repeats). Never heredoc, echo >, tee, sed -i, Set-Content or inline scripts that write files.
-- Builds, test suites, installs, training, evaluation, dev servers, watchers: start them with run_in_background: true, keep working on independent steps, and read the output when notified. Never block on them in the foreground or guess a sleep.
-- Run the narrowest command that proves the point (one test file, one package) before any full suite.
-- Follow a log or stream (tail -f, Get-Content -Wait, logs -f): Monitor.
-- Wait for a condition: Monitor with an until-loop, or a background command; never foreground sleep/Start-Sleep polling.
-- Repeat on a schedule: /loop, CronCreate or ScheduleWakeup, never while-true loops.
-- Web pages: WebFetch. Library docs: context7. GitHub: gh.
-- Several independent lookups: issue the tool calls together in one message.
-The shell is for builds, tests, git, package managers and running programs.`
+- Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.
+- Builds, tests, installs, servers: run_in_background: true, then read the output when notified. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
+- Run the narrowest check first. Issue independent lookups in one message.
+- Web pages: WebFetch. Library docs: context7. GitHub: gh.`
 
 export const SUBAGENT_RULES = `Subagent (started by the Agent tool): j-cc never moves your commands to the background, because you may finish before a background job reports.
 - Run commands whose result you need for your report in the foreground, with a timeout that fits (up to 600000 ms).

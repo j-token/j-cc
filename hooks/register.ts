@@ -13,6 +13,19 @@ import {
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
+import {
+  CHROME_SECTION,
+  CHROME_SECTION_HEADING,
+  GREP_DEFAULT_HEAD_LIMIT,
+  READ_DEFAULT_LIMIT,
+  capMcpInstructions,
+  groupDeferredTools,
+  parseSkillNames,
+  readMoreNote,
+  shortenAgentListing,
+  shortenSkillListing,
+  shouldCapRead,
+} from './context'
 import type { Shell } from './shell'
 
 let warnedBashFirst = false
@@ -65,6 +78,12 @@ async function decide($: EngineInterface, facts: CallFacts, useModel: boolean): 
   if (!shouldAsk(evidence)) return null
   return labelDecision(await modelLabel($, evidence).catch(() => null), facts.background, facts.isMain)
 }
+
+const ATTACHMENT_REWRITES = [
+  ['agent_listing_delta', shortenAgentListing],
+  ['mcp_instructions_delta', capMcpInstructions],
+  ['deferred_tools_delta', groupDeferredTools],
+] as const
 
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
@@ -139,6 +158,34 @@ export const register: Register = (on, options) => {
     return { ...r, description: `${r.description}\n\n${SHELL_TOOL_NOTE}` }
   }).catch(($, e, next) => next(e))
 
+  on('tool.call', { tool: 'Read' }, async ($, e, next) => {
+    if (e.tool !== 'Read' || !shouldCapRead(e)) return next(e)
+    const r = await next({ ...e, limit: READ_DEFAULT_LIMIT })
+    if (r.deny !== undefined || r.isError === true || r.result?.type !== 'text') return r
+    const note = readMoreNote(r.result.file)
+    return note ? withNote(r, note) : r
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'Grep' }, async ($, e, next) => {
+    if (String(e.tool) !== 'Grep' || (e as { head_limit?: number }).head_limit !== undefined) return next(e)
+    return next({ ...e, head_limit: GREP_DEFAULT_HEAD_LIMIT })
+  }).catch(($, e, next) => next(e))
+
+  const shownClaudeAiSkills = parseSkillNames(options.claudeAiSkills)
+  on('prompt.attachment', { type: 'skill_listing' }, async ($, e, next) => {
+    const r = await next(e)
+    return r.text ? { ...r, text: shortenSkillListing(r.text, shownClaudeAiSkills) } : r
+  }).catch(($, e, next) => next(e))
+
+  for (const [type, rewrite] of ATTACHMENT_REWRITES) {
+    on('prompt.attachment', { type }, async ($, e, next) => {
+      const r = await next(e)
+      return r.text ? { ...r, text: rewrite(r.text) } : r
+    }).catch(($, e, next) => next(e))
+  }
+
+  on('prompt.attachment', { type: 'total_tokens_reminder' }, () => ({ text: null })).catch(($, e, next) => next(e))
+
   on('prompt.attachment', { type: 'auto_mode' }, async ($, e, next) => {
     const r = await next(e)
     if (!r.text || !hasShellFirst(r.text)) return r
@@ -157,9 +204,10 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
     if (!FILE_TOOLS.some(t => e.tools.includes(t))) return r
+    const sections = r.sections.map(s => (s.text.startsWith(CHROME_SECTION_HEADING) ? { ...s, text: CHROME_SECTION } : s))
     return {
       sections: [
-        ...r.sections,
+        ...sections,
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
         { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
         { id: 'j-cc:auto-background', text: AUTO_BACKGROUND, scope: 'session' as const },
