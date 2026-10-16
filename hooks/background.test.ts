@@ -39,6 +39,25 @@ test('remeasures a remembered key after a few background runs', () => {
   expect(timings['npm test']).toBe(undefined)
 })
 
+test('briefs each subagent once and never backgrounds its commands', async ($, on) => {
+  on('store.get', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: 0 }))
+  const seen: (boolean | undefined)[] = []
+  on('tool.call', ($, e) => {
+    if (e.tool === 'Bash') seen.push(e.run_in_background)
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+  const first = await $.tool.call({ tool: 'Bash', command: 'npm ci', agentId: 'sub-1' } as never)
+  const second = await $.tool.call({ tool: 'Bash', command: 'git status', agentId: 'sub-1' } as never)
+  const denied = await $.tool.call({ tool: 'Bash', command: 'grep -rn x src', agentId: 'sub-2' } as never)
+  const main = await $.tool.call({ tool: 'Bash', command: 'git status' })
+  expect(seen).toEqual([undefined, undefined, undefined])
+  expect(JSON.stringify(first)).toContain('Context for this subagent')
+  expect(JSON.stringify(second)).not.toContain('Context for this subagent')
+  expect(JSON.stringify(denied)).toContain('Context for this subagent')
+  expect(JSON.stringify(main)).not.toContain('[j-cc]')
+})
+
 test('moves long and remembered-slow commands to the background', async ($, on) => {
   const store = new Map<string, unknown>([[TIMINGS_STORE_KEY, { 'cargo test': { seconds: 200, backgrounded: 0 } }]])
   let now = 0
@@ -63,6 +82,6 @@ test('moves long and remembered-slow commands to the background', async ($, on) 
   await $.tool.call({ tool: 'Bash', command: 'make e2e' })
   expect(seen).toEqual([true, true, undefined, undefined, true])
   expect(JSON.stringify(timed)).toContain('Moved to the background')
-  expect(JSON.stringify(slow)).toContain('blocked the session for 90s')
+  expect(JSON.stringify(slow)).toContain('took 90s in the foreground. Next time')
   expect((store.get(TIMINGS_STORE_KEY) as Timings)['cargo test']).toEqual({ seconds: 200, backgrounded: 1 })
 })

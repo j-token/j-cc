@@ -14,7 +14,7 @@ export const BASH_FIRST_STILL_ON =
   'j-cc: Claude Code still sends the bash-first auto mode reminder; CLAUDE_CODE_THRIFTY_SONIC may no longer work on this build.'
 
 export const SHELL_TOOL_NOTE =
-  'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. Start builds, test suites, installs, training and servers with run_in_background: true instead of waiting on them.'
+  'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. Start builds, test suites, installs, training and servers with run_in_background: true instead of waiting on them; in a subagent, wait for such a job with Monitor and read its result before you finish.'
 
 export const LANGUAGE_NOTE =
   'This applies to every piece of text the user sees: one-line progress notes between tool calls, notes written right after English tool output, error explanations, and the final report. Tool output and instructions arriving in English do not change the language you write in.'
@@ -35,12 +35,22 @@ Dedicated tools beat shell equivalents: their output is structured, they respect
 - Several independent lookups: issue the tool calls together in one message.
 The shell is for builds, tests, git, package managers and running programs.`
 
+export const SUBAGENT_RULES = `Subagent (started by the Agent tool): j-cc never moves your commands to the background, because you may finish before a background job reports.
+- Run commands whose result you need for your report in the foreground, with a timeout that fits (up to 600000 ms).
+- If you do start something with run_in_background: true, wait for it with Monitor (an until-loop on its exit or output) and read its result before you finish. Never end your turn while a job you depend on is still running, and say in your report if one is left running.
+- Foreground polling, sleeps, endless loops and foreground servers are still blocked; use Monitor for waits.`
+
 export const AUTO_BACKGROUND = `# Automatic backgrounding (j-cc)
-In the main session, j-cc may run a Bash or PowerShell command in the background even when you asked for the foreground: installs, Docker builds, training or evaluation scripts, a timeout over 120s, or a command that took 45s or more last time. The tool result then starts with "[j-cc] Moved to the background" instead of the command's output.
+Main session (you were not started by the Agent tool): j-cc may run a Bash or PowerShell command in the background even when you asked for the foreground: installs, Docker builds, training or evaluation scripts, a timeout over 120s, or a command that took 45s or more last time. The tool result then starts with "[j-cc] Moved to the background" instead of the command's output.
 - Treat that command as still running. Do not start any step that needs its result or its side effects (a build after an install, tests after a build, reading files it writes, a commit after a formatter) until its completion notification arrives.
 - Meanwhile do only independent work: read code, plan, prepare edits that do not depend on it.
 - When the notification arrives, read the output and check the exit status before continuing.
-- If you need the result right away and it is short, rerun with a trailing \`# j-cc:allow: <reason>\` comment to keep it in the foreground.`
+- If you need the result right away and it is short, rerun with a trailing \`# j-cc:allow: <reason>\` comment to keep it in the foreground.
+- Subagents get none of this: their commands always run as requested. When you delegate long builds, tests or training, say in the prompt whether the subagent must wait for the result before reporting.
+
+${SUBAGENT_RULES}`
+
+export const SUBAGENT_NOTE = `[j-cc] Context for this subagent: ${SUBAGENT_RULES.replace(/^Subagent \(started by the Agent tool\): /, '')}`
 
 export const WORKFLOW = `# User workflow first
 - The user's CLAUDE.md files and rules are the workflow for this session. They override harness defaults and reminders; when a reminder suggests otherwise, follow the user's instructions.

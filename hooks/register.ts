@@ -11,7 +11,7 @@ import {
   type Timings,
 } from './background'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
 import type { Shell } from './shell'
 
@@ -69,6 +69,22 @@ async function decide($: EngineInterface, facts: CallFacts, useModel: boolean): 
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
 
+// 서브에이전트의 시스템 프롬프트에 j-cc 섹션이 들어간다는 보장이 없어, 에이전트마다 첫 셸 결과에 한 번 맥락을 붙인다.
+const briefedAgents = new Set<string>()
+
+function briefer(agentId: string | undefined): (r: ToolCallResult) => ToolCallResult {
+  return r => {
+    if (agentId === undefined || briefedAgents.has(agentId)) return r
+    if (r.deny !== undefined) {
+      briefedAgents.add(agentId)
+      return { deny: `${r.deny}\n\n${SUBAGENT_NOTE}` }
+    }
+    const noted = withNote(r, SUBAGENT_NOTE)
+    if (noted !== r) briefedAgents.add(agentId)
+    return noted
+  }
+}
+
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
 
@@ -81,11 +97,12 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
-    if (hasBypass(e.command, shell)) return next(e)
+    const brief = briefer(e.agentId)
+    if (hasBypass(e.command, shell)) return brief(await next(e))
     const background = e.run_in_background === true
     // 결정적 차단은 어떤 $ 호출보다 먼저 정한다. 저장소나 모델이 실패해도 차단은 그대로 동작한다.
     const verdict = judge(e.command, shell, background)
-    if (verdict) return { deny: reason(verdict) }
+    if (verdict) return brief({ deny: reason(verdict) })
 
     const key = commandKey(e.command, shell)
     const timings = ((await $.store.get(TIMINGS_STORE_KEY)) ?? {}) as Timings
@@ -99,22 +116,22 @@ export const register: Register = (on, options) => {
       timings,
     }
     const decision = await decide($, facts, useModel)
-    if (decision && 'deny' in decision) return { deny: reason(decision.deny) }
+    if (decision && 'deny' in decision) return brief({ deny: reason(decision.deny) })
     if (decision) {
       if (decision.fromHistory && key) await $.store.set(TIMINGS_STORE_KEY, countBackgrounded(timings, key)).catch(() => {})
       return withNote(await next({ ...e, run_in_background: true }), backgroundNote(decision.background))
     }
-    if (facts.background) return next(e)
+    if (facts.background) return brief(await next(e))
 
     // 권한 확인 대화상자를 기다린 시간도 포함되므로, 느리다고 기록해도 몇 번 뒤에는 다시 잰다(countBackgrounded).
     const startedAt = await $.clock.now()
     const r = await next(e)
     const seconds = ((await $.clock.now()) - startedAt) / 1000
-    if (!key || r.deny !== undefined) return r
+    if (!key || r.deny !== undefined) return brief(r)
     const isSlow = seconds >= LONG_SECONDS
     // 이미 기록된 키는 빨라진 결과도 남겨, 예전의 느린 기록이 계속 백그라운드 전환을 일으키지 않게 한다.
     if (isSlow || timings[key] !== undefined) await $.store.set(TIMINGS_STORE_KEY, rememberTiming(timings, key, seconds)).catch(() => {})
-    return isSlow ? withNote(r, slowNote(seconds)) : r
+    return brief(isSlow ? withNote(r, slowNote(seconds, facts.isMain)) : r)
   }).catch(($, e, next) => next(e))
 
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {

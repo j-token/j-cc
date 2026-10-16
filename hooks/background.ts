@@ -89,6 +89,9 @@ export function backgroundNote(why: string): string {
   ].join(' ')
 }
 
-export function slowNote(seconds: number): string {
-  return `[j-cc] This command blocked the session for ${Math.round(seconds)}s. Next time start commands like this with run_in_background: true and keep working while it runs.`
+export function slowNote(seconds: number, isMain: boolean): string {
+  const took = `[j-cc] This command took ${Math.round(seconds)}s in the foreground.`
+  return isMain
+    ? `${took} Next time start commands like this with run_in_background: true and keep working while it runs.`
+    : `${took} That is fine when you need its result for your report. If there is independent work, you may start it with run_in_background: true, but wait for it with Monitor before you finish.`
 }
