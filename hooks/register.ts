@@ -11,7 +11,7 @@ import {
   type Timings,
 } from './background'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
@@ -27,6 +27,7 @@ import {
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
+import { ALWAYS_LOADED, REMOVED, SEARCH_LOADED, deferralFor, simpleDescription, denyList, withDenyRules, withoutDenyRules } from './tools'
 
 let warnedBashFirst = false
 
@@ -85,6 +86,35 @@ const ATTACHMENT_REWRITES = [
   ['deferred_tools_delta', groupDeferredTools],
 ] as const
 
+const TOOLS_COMMAND = 'j-cc-tools'
+
+async function userSettingsPath($: EngineInterface): Promise<string | null> {
+  const configDir = await $.env.get('CLAUDE_CONFIG_DIR')
+  if (configDir) return `${configDir}/settings.json`
+  const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
+  return home ? `${home}/.claude/settings.json` : null
+}
+
+async function runToolsCommand($: EngineInterface, action: string): Promise<string> {
+  const path = await userSettingsPath($)
+  if (!path) return 'j-cc: could not find the user settings folder (CLAUDE_CONFIG_DIR, USERPROFILE and HOME are all unset).'
+  // 파일이 없을 때만 빈 설정에서 시작한다. 읽기가 다른 이유로 실패했는데 {} 로 이어 가면 settings.json 전체를 덮어쓴다.
+  const settings = (await $.fs.exists(path)) ? JSON.parse(await $.fs.read(path)) : {}
+
+  if (action === 'apply' || action === 'revert') {
+    const { settings: next, changed } = action === 'apply' ? withDenyRules(settings, REMOVED) : withoutDenyRules(settings, REMOVED)
+    if (!changed.length) return `j-cc: nothing to change in ${path}.`
+    await $.fs.write(path, `${JSON.stringify(next, null, 2)}\n`)
+    const verb = action === 'apply' ? 'Added to' : 'Removed from'
+    return `j-cc: ${verb} permissions.deny in ${path} (${changed.length}): ${changed.join(', ')}`
+  }
+
+  const denied = denyList(settings)
+  const missing = REMOVED.filter(tool => !denied.includes(tool))
+  const state = missing.length ? `${REMOVED.length - missing.length}/${REMOVED.length} denied; missing: ${missing.join(', ')}` : `all ${REMOVED.length} denied`
+  return `j-cc: ${path}: ${state}.\n/${TOOLS_COMMAND} apply adds them to permissions.deny; /${TOOLS_COMMAND} revert takes them out.`
+}
+
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
 
@@ -110,8 +140,25 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
     if ((await $.env.get('CLAUDE_CODE_THRIFTY_SONIC')) === undefined) await $.env.set('CLAUDE_CODE_THRIFTY_SONIC', '0')
+    await $.command.register({
+      name: TOOLS_COMMAND,
+      description: 'Add or remove the tools j-cc keeps out in your user settings.json deny list',
+      argumentHint: '[apply|revert]',
+    })
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  // settings.json 을 고치는 명령이라 사람이 입력했을 때(터미널, Remote Control)만 실행한다. 플러그인, 다른 세션, 예약 작업은 거부한다.
+  on('command.run', { command: TOOLS_COMMAND }, async ($, e) =>
+    e.origin.kind === 'composer' || e.origin.kind === 'bridge'
+      ? { text: await runToolsCommand($, e.args.trim()) }
+      : { text: `j-cc: /${TOOLS_COMMAND} runs only when you type it.` },
+  ).catch(
+    ($, e, next) => {
+      const error = next.error as { message?: unknown } | undefined
+      return { text: `j-cc: /${TOOLS_COMMAND} failed: ${String(error?.message ?? JSON.stringify(error))}` }
+    },
+  )
 
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
@@ -153,9 +200,11 @@ export const register: Register = (on, options) => {
     return brief(isSlow ? withNote(r, slowNote(seconds, facts.isMain)) : r)
   }).catch(($, e, next) => next(e))
 
-  on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
+  on('tool.describe', { tool: [...ALWAYS_LOADED, ...SEARCH_LOADED] }, async ($, e, next) => {
     const r = await next(e)
-    return { ...r, description: `${r.description}\n\n${SHELL_TOOL_NOTE}` }
+    const description = simpleDescription(e.tool, r.description)
+    const isDeferred = deferralFor(e.tool)
+    return isDeferred === undefined ? { ...r, description } : { ...r, description, isDeferred }
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
