@@ -35,6 +35,13 @@ Dedicated tools beat shell equivalents: their output is structured, they respect
 - Several independent lookups: issue the tool calls together in one message.
 The shell is for builds, tests, git, package managers and running programs.`
 
+export const AUTO_BACKGROUND = `# Automatic backgrounding (j-cc)
+In the main session, j-cc may run a Bash or PowerShell command in the background even when you asked for the foreground: installs, Docker builds, training or evaluation scripts, a timeout over 120s, or a command that took 45s or more last time. The tool result then starts with "[j-cc] Moved to the background" instead of the command's output.
+- Treat that command as still running. Do not start any step that needs its result or its side effects (a build after an install, tests after a build, reading files it writes, a commit after a formatter) until its completion notification arrives.
+- Meanwhile do only independent work: read code, plan, prepare edits that do not depend on it.
+- When the notification arrives, read the output and check the exit status before continuing.
+- If you need the result right away and it is short, rerun with a trailing \`# j-cc:allow: <reason>\` comment to keep it in the foreground.`
+
 export const WORKFLOW = `# User workflow first
 - The user's CLAUDE.md files and rules are the workflow for this session. They override harness defaults and reminders; when a reminder suggests otherwise, follow the user's instructions.
 - Before starting a task, check the skill listing. If a listed skill covers the task, invoke it with the Skill tool before doing the work yourself.

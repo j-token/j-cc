@@ -118,4 +118,5 @@ test('appends the routing section to the system prompt', async ($, on) => {
     traits: [],
   })
   expect(sections.map(s => s.id)).toContain('j-cc:routing')
+  expect(sections.map(s => s.id)).toContain('j-cc:auto-background')
 })

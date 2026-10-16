@@ -83,8 +83,9 @@ export function backgroundReason(command: string, shell: Shell, timeoutMs: numbe
 
 export function backgroundNote(why: string): string {
   return [
-    `[j-cc] Moved to the background (${why}). You will be notified when it exits.`,
-    'Do not wait, sleep, or poll for it. Continue with independent work now (read code, plan the next step, prepare edits), and read its output when the notification arrives.',
+    `[j-cc] Moved to the background (${why}): it is still running and you will be notified when it exits.`,
+    'Do not run any step that depends on its result or side effects until that notification arrives, and do not sleep or poll for it.',
+    'Meanwhile do only independent work (read code, plan, prepare edits); then check its output and exit status before continuing.',
   ].join(' ')
 }
 

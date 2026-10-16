@@ -31,7 +31,7 @@ Findings from Claude Code 2.1.301:
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. |
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
-| Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. |
+| Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. A `# Automatic backgrounding (j-cc)` system-prompt section tells Claude about this up front, so it does not run dependent steps before the completion notification. |
 | In-CC model judge | Commands the rules cannot decide are classified by Claude Code's own `$.model` (Haiku), only when the command or the script it runs shows loop, wait or server signals, and cached per command: `quick`, `long_job`, `wait_poll`, `endless`, `server`. |
 | Regression alert | If the shell-first reminder still shows up despite the variable, a toast says so and the paragraph is rewritten as a fallback. |
 

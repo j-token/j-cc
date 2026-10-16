@@ -11,7 +11,7 @@ import {
   type Timings,
 } from './background'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { BASH_FIRST_STILL_ON, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
 import type { Shell } from './shell'
 
@@ -145,6 +145,7 @@ export const register: Register = (on, options) => {
         ...r.sections,
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
         { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
+        { id: 'j-cc:auto-background', text: AUTO_BACKGROUND, scope: 'session' as const },
       ],
     }
   }).catch(($, e, next) => next(e))
