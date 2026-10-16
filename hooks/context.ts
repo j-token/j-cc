@@ -52,21 +52,15 @@ export function shortenListing(text: string, options: { dropSuffix?: RegExp; kee
 // 디렉터리 범위 스킬("apps/web:deploy")은 앞부분에 "/" 가 있어 남긴다.
 const CLAUDE_AI_PREFIX = 'anthropic-skills:'
 
-export function parseSkillNames(setting: unknown): string[] {
-  return typeof setting === 'string' ? setting.split(',').map(name => name.trim()).filter(Boolean) : []
-}
-
-export function skillFilter(shownClaudeAiSkills: readonly string[]): (name: string) => boolean {
+export function skillFilter(enabledClaudeAiSkills: readonly string[]): (name: string) => boolean {
   return name => {
-    if (name.startsWith(CLAUDE_AI_PREFIX)) {
-      return shownClaudeAiSkills.includes('*') || shownClaudeAiSkills.includes(name.slice(CLAUDE_AI_PREFIX.length))
-    }
+    if (name.startsWith(CLAUDE_AI_PREFIX)) return enabledClaudeAiSkills.includes(name.slice(CLAUDE_AI_PREFIX.length))
     return !/^[^/]+:/.test(name)
   }
 }
 
-export const shortenSkillListing = (text: string, shownClaudeAiSkills: readonly string[] = []) =>
-  shortenListing(text, { keep: skillFilter(shownClaudeAiSkills) })
+export const shortenSkillListing = (text: string, enabledClaudeAiSkills: readonly string[] = []) =>
+  shortenListing(text, { keep: skillFilter(enabledClaudeAiSkills) })
 
 export const shortenAgentListing = (text: string) => shortenListing(text, { dropSuffix: /\s*\(Tools: [^)]*\)\s*$/ })
 

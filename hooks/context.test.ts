@@ -3,7 +3,6 @@ import {
   capMcpInstructions,
   firstSentence,
   groupDeferredTools,
-  parseSkillNames,
   readMoreNote,
   shortenAgentListing,
   shortenSkillListing,
@@ -31,17 +30,11 @@ test('스킬 목록에서 플러그인과 claude.ai 스킬, 중복, 여러 줄 �
 - apps/web:deploy: Deploy the web app.`)
 })
 
-test('설정에 적은 claude.ai 스킬만 다시 보인다', () => {
-  const out = shortenSkillListing(SKILLS, parseSkillNames(' pdf , docx'))
+test('활성화한 claude.ai 스킬만 다시 보인다', () => {
+  const out = shortenSkillListing(SKILLS, ['pdf'])
 
   expect(out).toContain('- anthropic-skills:pdf: Use this skill whenever the user wants to do anything with PDF files.')
   expect(out).not.toContain('marketing:seo-audit')
-})
-
-test('설정이 *이면 claude.ai 스킬을 모두 보이고, 비어 있으면 모두 숨긴다', () => {
-  expect(shortenSkillListing(SKILLS, ['*'])).toContain('anthropic-skills:pdf')
-  expect(shortenSkillListing(SKILLS, parseSkillNames(''))).not.toContain('anthropic-skills:pdf')
-  expect(parseSkillNames(undefined)).toEqual([])
 })
 
 test('이름만 있는 스킬 줄과 별칭이 붙은 스킬 줄도 항목으로 남긴다', () => {

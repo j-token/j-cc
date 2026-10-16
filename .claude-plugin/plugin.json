@@ -10,12 +10,6 @@
       "title": "Model judge for ambiguous commands",
       "description": "Ask a small model inside Claude Code (no API key) whether a script or loop the rules cannot decide will wait, run endlessly, or take minutes.",
       "default": true
-    },
-    "claudeAiSkills": {
-      "type": "string",
-      "title": "claude.ai skills to show",
-      "description": "claude.ai (anthropic-skills:) skills are hidden from the model by default. List the ones to show, comma-separated (pdf, docx), or * for all.",
-      "default": ""
     }
   }
 }

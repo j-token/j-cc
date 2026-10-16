@@ -20,13 +20,13 @@ import {
   READ_DEFAULT_LIMIT,
   capMcpInstructions,
   groupDeferredTools,
-  parseSkillNames,
   readMoreNote,
   shortenAgentListing,
   shortenSkillListing,
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
+import { SKILLS_COMMAND, enabledClaudeAiSkills, registerSkills, rememberCatalog } from './skills'
 import { ALWAYS_LOADED, REMOVED, SEARCH_LOADED, deferralFor, simpleDescription, denyList, withDenyRules, withoutDenyRules } from './tools'
 
 let warnedBashFirst = false
@@ -145,6 +145,7 @@ export const register: Register = (on, options) => {
       description: 'Add or remove the tools j-cc keeps out in your user settings.json deny list',
       argumentHint: '[apply|revert]',
     })
+    await $.command.register({ name: SKILLS_COMMAND, description: 'Choose which claude.ai skills the model sees and can call' })
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -220,11 +221,15 @@ export const register: Register = (on, options) => {
     return next({ ...e, head_limit: GREP_DEFAULT_HEAD_LIMIT })
   }).catch(($, e, next) => next(e))
 
-  const shownClaudeAiSkills = parseSkillNames(options.claudeAiSkills)
   on('prompt.attachment', { type: 'skill_listing' }, async ($, e, next) => {
     const r = await next(e)
-    return r.text ? { ...r, text: shortenSkillListing(r.text, shownClaudeAiSkills) } : r
+    if (!r.text) return r
+    await rememberCatalog($, r.text).catch(() => {})
+    // 저장소를 읽지 못해도 목록 줄이기는 한다. 그때 claude.ai 스킬은 모두 숨긴다.
+    return { ...r, text: shortenSkillListing(r.text, await enabledClaudeAiSkills($).catch(() => [])) }
   }).catch(($, e, next) => next(e))
+
+  registerSkills(on)
 
   for (const [type, rewrite] of ATTACHMENT_REWRITES) {
     on('prompt.attachment', { type }, async ($, e, next) => {
