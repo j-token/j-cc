@@ -1,0 +1,12 @@
+{
+  "name": "j-cc",
+  "owner": { "name": "j-token" },
+  "metadata": { "description": "Harness tuning plugins for Claude Code" },
+  "plugins": [
+    {
+      "name": "j-cc",
+      "source": "./",
+      "description": "Harness tuning for Claude models in Claude Code: dedicated-tool routing, deterministic shell guards, background long-running commands."
+    }
+  ]
+}
