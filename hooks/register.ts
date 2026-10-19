@@ -11,7 +11,7 @@ import {
   type Timings,
 } from './background'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, WORKFLOW, hasShellFirst, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
@@ -115,6 +115,15 @@ async function runToolsCommand($: EngineInterface, action: string): Promise<stri
   return `j-cc: ${path}: ${state}.\n/${TOOLS_COMMAND} apply adds them to permissions.deny; /${TOOLS_COMMAND} revert takes them out.`
 }
 
+// 명령이 이미 실행된 뒤에 부르므로, 설정을 읽지 못해도 던지지 않는다. 던지면 훅의 catch 가 명령을 한 번 더 실행한다.
+async function configuredLanguage($: EngineInterface): Promise<unknown> {
+  try {
+    return (await $.settings.read()).language
+  } catch {
+    return undefined
+  }
+}
+
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
 
@@ -186,7 +195,8 @@ export const register: Register = (on, options) => {
     if (decision && 'deny' in decision) return brief({ deny: reason(decision.deny) })
     if (decision) {
       if (decision.fromHistory && key) await $.store.set(TIMINGS_STORE_KEY, countBackgrounded(timings, key)).catch(() => {})
-      return withNote(await next({ ...e, run_in_background: true }), backgroundNote(decision.background))
+      const started = await next({ ...e, run_in_background: true })
+      return withNote(started, `${backgroundNote(decision.background)} ${replyLanguageNote(await configuredLanguage($))}`)
     }
     if (facts.background) return brief(await next(e))
 
@@ -198,7 +208,8 @@ export const register: Register = (on, options) => {
     const isSlow = seconds >= LONG_SECONDS
     // 이미 기록된 키는 빨라진 결과도 남겨, 예전의 느린 기록이 계속 백그라운드 전환을 일으키지 않게 한다.
     if (isSlow || timings[key] !== undefined) await $.store.set(TIMINGS_STORE_KEY, rememberTiming(timings, key, seconds)).catch(() => {})
-    return brief(isSlow ? withNote(r, slowNote(seconds, facts.isMain)) : r)
+    if (!isSlow) return brief(r)
+    return brief(withNote(r, `${slowNote(seconds, facts.isMain)} ${replyLanguageNote(await configuredLanguage($))}`))
   }).catch(($, e, next) => next(e))
 
   on('tool.describe', { tool: [...ALWAYS_LOADED, ...SEARCH_LOADED] }, async ($, e, next) => {

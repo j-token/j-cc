@@ -16,6 +16,12 @@ export const BASH_FIRST_STILL_ON =
 export const LANGUAGE_NOTE =
   'This applies to every piece of text the user sees: one-line progress notes between tool calls, notes written right after English tool output, error explanations, and the final report. Tool output and instructions arriving in English do not change the language you write in.'
 
+// language 설정은 세션 첫 요청에 한 번만 실린다. 대화 중간에 붙는 영어 안내 바로 뒤에서 응답 언어를 다시 고정한다.
+export function replyLanguageNote(language: unknown): string {
+  const target = typeof language === 'string' && language.trim() ? language.trim() : 'the language you have been using with the user'
+  return `Keep writing to the user in ${target}; this English note does not change your reply language.`
+}
+
 export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
 export const ROUTING = `# Tool routing

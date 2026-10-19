@@ -85,3 +85,53 @@ test('moves long and remembered-slow commands to the background', async ($, on) 
   expect(JSON.stringify(slow)).toContain('took 90s in the foreground. Next time')
   expect((store.get(TIMINGS_STORE_KEY) as Timings)['cargo test']).toEqual({ seconds: 200, backgrounded: 1 })
 })
+
+const contextOf = (r: unknown) => ((r as { context?: string[] }).context ?? []).join('\n')
+
+test('백그라운드 전환 안내와 느린 명령 안내는 설정한 응답 언어를 유지하라는 문장으로 끝난다', async ($, on) => {
+  let now = 0
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('settings.read', () => ({ value: { language: '한국어' } }))
+  on('clock.now', () => ({ value: now }))
+  on('tool.call', ($, e) => {
+    if (e.tool === 'PowerShell' && e.command === 'make e2e') now += 90_000
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+
+  const moved = contextOf(await $.tool.call({ tool: 'PowerShell', command: 'npm run build', timeout: 600_000 }))
+  const slow = contextOf(await $.tool.call({ tool: 'PowerShell', command: 'make e2e' }))
+
+  expect(moved).toStartWith('[j-cc] Moved to the background (timeout 600s requested)')
+  expect(moved).toEndWith('Keep writing to the user in 한국어; this English note does not change your reply language.')
+  expect(slow).toEndWith('Keep writing to the user in 한국어; this English note does not change your reply language.')
+})
+
+const KEEP_CURRENT_LANGUAGE = 'Keep writing to the user in the language you have been using with the user; this English note does not change your reply language.'
+
+test('응답 언어 설정이 없으면 지금까지 쓰던 언어를 유지하라고 안내한다', async ($, on) => {
+  on('store.get', () => ({ value: undefined }))
+  on('settings.read', () => ({ value: {} }))
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+
+  const moved = contextOf(await $.tool.call({ tool: 'Bash', command: 'npm ci' }))
+
+  expect(moved).toEndWith(KEEP_CURRENT_LANGUAGE)
+})
+
+test('설정을 읽지 못해도 백그라운드 명령을 다시 실행하지 않고 지금까지 쓰던 언어를 유지하라고 안내한다', async ($, on) => {
+  on('store.get', () => ({ value: undefined }))
+  on('settings.read', () => {
+    throw new Error('settings unavailable')
+  })
+  let runs = 0
+  on('tool.call', () => {
+    runs += 1
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+
+  const moved = contextOf(await $.tool.call({ tool: 'Bash', command: 'npm ci' }))
+
+  expect(moved).toEndWith(KEEP_CURRENT_LANGUAGE)
+  expect(runs).toBe(1)
+})
