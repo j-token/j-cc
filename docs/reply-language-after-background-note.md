@@ -28,17 +28,18 @@
 
 ## 수정
 
-j-cc가 대화 중간에 붙이는 두 안내 끝에 응답 언어를 다시 고정하는 문장을 붙인다.
+j-cc가 대화 중간에 붙이는 두 안내, 즉 백그라운드 전환 안내(메인 세션)와 느린 명령 안내(메인 세션과 서브에이전트)의 각 문자열 끝에 응답 언어를 다시 고정하는 문장을 붙인다.
 
 - 사용자 설정의 `language`를 `$.settings.read()`로 읽어 그 값을 넣는다. 예: `Keep writing to the user in 한국어; this English note does not change your reply language.`
 - 설정이 없으면 `the language you have been using with the user`로 대신한다.
 - 안내의 앞부분(`[j-cc] Moved to the background ...`)은 그대로 둔다. 시스템 프롬프트의 `# Automatic backgrounding (j-cc)` 섹션이 이 접두사로 안내를 설명한다.
 - 설정 읽기는 명령이 이미 실행된 뒤에 일어난다. 읽기가 실패해 예외가 나면 훅의 `.catch`가 명령을 한 번 더 실행하므로, 실패를 삼키고 기본 문장을 쓴다.
 - `tool.call` 훅이라서, 조직이 관리하는 환경에서 `prompt.attachment` 훅(`LANGUAGE_NOTE`)이 돌지 않는 경우에도 동작한다(`claude plugin validate` 경고 참고).
+- 서브에이전트 안내 `SUBAGENT_NOTE`에는 언어 문장을 붙이지 않는다. 이슈 범위 밖이고, 서브에이전트 출력은 사용자보다 부모 에이전트가 읽기 때문이다. 그래서 서브에이전트의 첫 느린 명령 결과에서는 느린 명령 안내 뒤에 `SUBAGENT_NOTE`가 이어 붙고, 언어 문장이 도구 결과 맥락 전체의 마지막 문장은 아니다.
 
 ## 검증
 
-결정적으로 확인할 수 있는 것은 "안내 문자열이 응답 언어 문장으로 끝나는가"이다. 모델이 실제로 한국어를 유지하는지는 확률적이라 테스트로 보장하지 않는다.
+결정적으로 확인할 수 있는 것은 "두 안내 문자열 각각이 응답 언어 문장으로 끝나는가"이다. 테스트는 메인 세션 경로에서 확인한다. 모델이 실제로 한국어를 유지하는지는 확률적이라 테스트로 보장하지 않는다.
 
 `hooks/background.test.ts`에 회귀 테스트 3개를 추가했다.
 
