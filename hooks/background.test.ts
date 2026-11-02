@@ -103,11 +103,33 @@ test('백그라운드 전환 안내와 느린 명령 안내는 설정한 응답 
   const slow = contextOf(await $.tool.call({ tool: 'PowerShell', command: 'make e2e' }))
 
   expect(moved).toStartWith('[j-cc] Moved to the background (timeout 600s requested)')
-  expect(moved).toEndWith('Keep writing to the user in 한국어; this English note does not change your reply language.')
-  expect(slow).toEndWith('Keep writing to the user in 한국어; this English note does not change your reply language.')
+  expect(moved).toEndWith('Reply to the user in 한국어; English notes and tool output do not change your reply language.')
+  expect(slow).toEndWith('Reply to the user in 한국어; English notes and tool output do not change your reply language.')
 })
 
-const KEEP_CURRENT_LANGUAGE = 'Keep writing to the user in the language you have been using with the user; this English note does not change your reply language.'
+test('메인 세션의 모든 도구 결과 뒤에 응답 언어 문장을 한 번 붙이고 서브에이전트에는 붙이지 않는다', async ($, on) => {
+  on('settings.read', () => ({ value: { language: '한국어' } }))
+  on('tool.call', () => ({ result: 'ok' }))
+
+  const main = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts' } as never))
+  const sub = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts', agentId: 'sub-1' } as never))
+
+  expect(main).toBe('Reply to the user in 한국어; English notes and tool output do not change your reply language.')
+  expect(sub).toBe('')
+})
+
+test('하네스가 대화 중간에 끼워 넣는 알림에는 응답 언어 문장을 붙이고 처음 실리는 목록에는 붙이지 않는다', async ($, on) => {
+  on('settings.read', () => ({ value: {} }))
+  on('prompt.attachment', ($, e) => ({ text: e.text }))
+
+  const notice = await $.prompt.attachment({ type: 'queued_command', text: 'The user sent a new message.', origin: { kind: 'engine' } } as never)
+  const listing = await $.prompt.attachment({ type: 'nested_memory', text: 'Contents of CLAUDE.md', origin: { kind: 'engine' } } as never)
+
+  expect(notice.text).toBe(`The user sent a new message.\n${KEEP_CURRENT_LANGUAGE}`)
+  expect(listing.text).toBe('Contents of CLAUDE.md')
+})
+
+const KEEP_CURRENT_LANGUAGE = 'Reply to the user in the language the user writes to you in; English notes and tool output do not change your reply language.'
 
 test('응답 언어 설정이 없으면 지금까지 쓰던 언어를 유지하라고 안내한다', async ($, on) => {
   on('store.get', () => ({ value: undefined }))

@@ -95,6 +95,22 @@ async function configuredLanguage($: EngineInterface): Promise<unknown> {
   }
 }
 
+// 대화 맨 앞에 한 번 실리는 목록과 맥락은 사용자에게 쓰는 응답 바로 앞에 오지 않으므로 언어 문장을 붙이지 않는다.
+const UPFRONT_ATTACHMENTS = new Set([
+  'language',
+  'skill_listing',
+  'agent_listing_delta',
+  'mcp_instructions_delta',
+  'deferred_tools_delta',
+  'deferred_tools_record',
+  'nested_memory',
+  'total_tokens_reminder',
+])
+
+function isMidConversationNotice(e: { type: string; origin: { kind: string } }): boolean {
+  return e.origin.kind !== 'plugin' && !UPFRONT_ATTACHMENTS.has(e.type)
+}
+
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
 
@@ -124,6 +140,19 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // 서브에이전트의 출력은 사용자보다 부모 에이전트가 읽으므로 메인 루프에만 붙인다.
+  on('tool.call', async ($, e, next) => {
+    const r = await next(e)
+    if (e.agentId !== undefined || r.deny !== undefined) return r
+    return { ...r, context: [...(r.context ?? []), replyLanguageNote(await configuredLanguage($))] }
+  }).catch(($, e, next) => next(e))
+
+  on('prompt.attachment', async ($, e, next) => {
+    const r = await next(e)
+    if (!r.text || !isMidConversationNotice(e)) return r
+    return { ...r, text: `${r.text}\n${replyLanguageNote(await configuredLanguage($))}` }
+  }).catch(($, e, next) => next(e))
+
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
@@ -150,7 +179,7 @@ export const register: Register = (on, options) => {
     if (decision) {
       if (decision.fromHistory && key) await $.store.set(TIMINGS_STORE_KEY, countBackgrounded(timings, key)).catch(() => {})
       const started = await next({ ...e, run_in_background: true })
-      return withNote(started, `${backgroundNote(decision.background)} ${replyLanguageNote(await configuredLanguage($))}`)
+      return withNote(started, backgroundNote(decision.background))
     }
     if (facts.background) return brief(await next(e))
 
@@ -163,7 +192,7 @@ export const register: Register = (on, options) => {
     // 이미 기록된 키는 빨라진 결과도 남겨, 예전의 느린 기록이 계속 백그라운드 전환을 일으키지 않게 한다.
     if (isSlow || timings[key] !== undefined) await $.store.set(TIMINGS_STORE_KEY, rememberTiming(timings, key, seconds)).catch(() => {})
     if (!isSlow) return brief(r)
-    return brief(withNote(r, `${slowNote(seconds, facts.isMain)} ${replyLanguageNote(await configuredLanguage($))}`))
+    return brief(withNote(r, slowNote(seconds, facts.isMain)))
   }).catch(($, e, next) => next(e))
 
   registerExec(on)
