@@ -20,21 +20,16 @@ SKIP only when another provider is used.
 - apps/web:deploy: Deploy the web app.
 - commit-rule: 커밋 규칙입니다.`
 
-test('스킬 목록에서 플러그인과 claude.ai 스킬, 중복, 여러 줄 설명을 뺀다', () => {
+test('스킬 목록은 모든 스킬을 남기고 중복과 여러 줄 설명만 뺀다', () => {
   const out = shortenSkillListing(SKILLS)
 
   expect(out).toBe(`The following skills are available for use with the Skill tool:
 
 - commit-rule: 커밋 규칙입니다.
 - claude-api: Reference for the Claude API.
+- marketing:seo-audit: Run a comprehensive SEO audit.
+- anthropic-skills:pdf: Use this skill whenever the user wants to do anything with PDF files.
 - apps/web:deploy: Deploy the web app.`)
-})
-
-test('활성화한 claude.ai 스킬만 다시 보인다', () => {
-  const out = shortenSkillListing(SKILLS, ['pdf'])
-
-  expect(out).toContain('- anthropic-skills:pdf: Use this skill whenever the user wants to do anything with PDF files.')
-  expect(out).not.toContain('marketing:seo-audit')
 })
 
 test('이름만 있는 스킬 줄과 별칭이 붙은 스킬 줄도 항목으로 남긴다', () => {
@@ -48,7 +43,8 @@ TRIGGER when the user says ship.
   expect(shortenSkillListing(text)).toBe(`The following skills are available for use with the Skill tool:
 
 - review
-- deploy (ship): Deploy the app.`)
+- deploy (ship): Deploy the app.
+- marketing:seo-audit`)
 })
 
 test('첫 문장은 e.g.나 etc. 같은 약어에서 끊지 않는다', () => {
@@ -198,6 +194,7 @@ test('스킬 목록 첨부를 줄여서 보낸다', async ($, on) => {
 
   const r = await $.prompt.attachment({ type: 'skill_listing', text: SKILLS, origin: { kind: 'engine' } })
 
-  expect(r.text).not.toContain('marketing:seo-audit')
+  expect(r.text).not.toContain('TRIGGER')
+  expect(r.text).toContain('- marketing:seo-audit: Run a comprehensive SEO audit.')
   expect(r.text).toContain('- commit-rule: 커밋 규칙입니다.')
 })

@@ -23,7 +23,7 @@ export function firstSentence(text: string, maxChars = ENTRY_DESCRIPTION_CHARS):
 
 // "- name: description" 항목을 한 줄로 줄이고, 항목에 이어지는 줄(여러 줄 설명)은 빈 줄이 나올 때까지 버린다.
 // 이름만 있는 "- name" 과 별칭이 붙은 "- name (alias): ..." 도 항목이다. 머리말과, 빈 줄로 떨어진 꼬리말은 둔다.
-export function shortenListing(text: string, options: { dropSuffix?: RegExp; keep?: (name: string) => boolean } = {}): string {
+export function shortenListing(text: string, options: { dropSuffix?: RegExp } = {}): string {
   const out: string[] = []
   const seen = new Set<string>()
   let inEntry = false
@@ -32,7 +32,7 @@ export function shortenListing(text: string, options: { dropSuffix?: RegExp; kee
     if (entry) {
       inEntry = true
       const name = entry[1]
-      if (seen.has(name) || (options.keep && !options.keep(name))) continue
+      if (seen.has(name)) continue
       seen.add(name)
       const separator = entry[2].indexOf(': ')
       const label = separator === -1 ? entry[2] : entry[2].slice(0, separator)
@@ -48,19 +48,7 @@ export function shortenListing(text: string, options: { dropSuffix?: RegExp; kee
   return out.join('\n')
 }
 
-// 플러그인 스킬과 claude.ai 스킬은 "<출처>:<이름>" 으로, 사용자(~/.claude/skills)·프로젝트·내장 스킬은 이름만으로 나온다.
-// 디렉터리 범위 스킬("apps/web:deploy")은 앞부분에 "/" 가 있어 남긴다.
-const CLAUDE_AI_PREFIX = 'anthropic-skills:'
-
-export function skillFilter(enabledClaudeAiSkills: readonly string[]): (name: string) => boolean {
-  return name => {
-    if (name.startsWith(CLAUDE_AI_PREFIX)) return enabledClaudeAiSkills.includes(name.slice(CLAUDE_AI_PREFIX.length))
-    return !/^[^/]+:/.test(name)
-  }
-}
-
-export const shortenSkillListing = (text: string, enabledClaudeAiSkills: readonly string[] = []) =>
-  shortenListing(text, { keep: skillFilter(enabledClaudeAiSkills) })
+export const shortenSkillListing = (text: string) => shortenListing(text)
 
 export const shortenAgentListing = (text: string) => shortenListing(text, { dropSuffix: /\s*\(Tools: [^)]*\)\s*$/ })
 

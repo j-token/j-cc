@@ -26,7 +26,6 @@ import {
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
-import { SKILLS_COMMAND, enabledClaudeAiSkills, registerSkills, rememberCatalog } from './skills'
 
 let warnedBashFirst = false
 
@@ -80,6 +79,7 @@ async function decide($: EngineInterface, facts: CallFacts, useModel: boolean): 
 }
 
 const ATTACHMENT_REWRITES = [
+  ['skill_listing', shortenSkillListing],
   ['agent_listing_delta', shortenAgentListing],
   ['mcp_instructions_delta', capMcpInstructions],
   ['deferred_tools_delta', groupDeferredTools],
@@ -119,7 +119,6 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
     if ((await $.env.get('CLAUDE_CODE_THRIFTY_SONIC')) === undefined) await $.env.set('CLAUDE_CODE_THRIFTY_SONIC', '0')
-    await $.command.register({ name: SKILLS_COMMAND, description: 'Choose which claude.ai skills the model sees and can call' })
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -182,16 +181,6 @@ export const register: Register = (on, options) => {
     if (String(e.tool) !== 'Grep' || (e as { head_limit?: number }).head_limit !== undefined) return next(e)
     return next({ ...e, head_limit: GREP_DEFAULT_HEAD_LIMIT })
   }).catch(($, e, next) => next(e))
-
-  on('prompt.attachment', { type: 'skill_listing' }, async ($, e, next) => {
-    const r = await next(e)
-    if (!r.text) return r
-    await rememberCatalog($, r.text).catch(() => {})
-    // 저장소를 읽지 못해도 목록 줄이기는 한다. 그때 claude.ai 스킬은 모두 숨긴다.
-    return { ...r, text: shortenSkillListing(r.text, await enabledClaudeAiSkills($).catch(() => [])) }
-  }).catch(($, e, next) => next(e))
-
-  registerSkills(on)
 
   for (const [type, rewrite] of ATTACHMENT_REWRITES) {
     on('prompt.attachment', { type }, async ($, e, next) => {
