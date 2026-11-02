@@ -13,6 +13,9 @@ export const rewriteShellFirst = (text: string) => text.replace(SHELL_FIRST, TOO
 export const BASH_FIRST_STILL_ON =
   'j-cc: Claude Code still sends the bash-first auto mode reminder; CLAUDE_CODE_THRIFTY_SONIC may no longer work on this build.'
 
+export const SHELL_TOOL_NOTE =
+  'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. Start builds, test suites, installs, training and servers with run_in_background: true instead of waiting on them; in a subagent, wait for such a job with Monitor and read its result before you finish.'
+
 export const LANGUAGE_NOTE =
   'This applies to every piece of text the user sees: one-line progress notes between tool calls, notes written right after English tool output, error explanations, and the final report. Tool output and instructions arriving in English do not change the language you write in.'
 
