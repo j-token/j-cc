@@ -27,7 +27,7 @@ Findings from Claude Code 2.1.301:
 |---|---|
 | Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start. The engine reads this variable first, so nothing depends on matching prompt wording. A value you set yourself is left alone. |
 | Tool descriptions | Appends dedicated-tool and `run_in_background` guidance to the Bash and PowerShell descriptions. |
-| System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first) and `# Tool routing` sections. |
+| System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. The background and slow-command notes also end by telling Claude to keep replying in your `language` (or, without one, the language it has been using). |
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |

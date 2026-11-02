@@ -29,7 +29,9 @@ export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
 export const ROUTING = `# Tool routing
 - Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.
-- Commands that may run longer than ~10s and whose progress you want to see (builds, tests, lint, installs, git push): mcp__j-cc__exec, which returns within seconds with the output so far; read the rest with mcp__j-cc__poll. Jobs you do not need to watch, and servers: run_in_background: true, then read the output when notified. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.- Run the narrowest check first. Issue independent lookups in one message.
+- Commands that may run longer than ~10s and whose progress you want to see (builds, tests, lint, installs, git push): mcp__j-cc__exec, which returns within seconds with the output so far; read the rest with mcp__j-cc__poll. Jobs you do not need to watch, and servers: run_in_background: true, then read the output when notified. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
+- A tool you need is not in your tool list (web, browser, MCP server, scheduling, notebooks): search for it with ToolSearch before falling back to the shell. Deferred tools are listed by name only; load them with ToolSearch "select:<name>".
+- Run the narrowest check first. Issue independent lookups in one message.
 - Web pages: WebFetch. Library docs: context7. GitHub: gh.`
 
 export const SUBAGENT_RULES = `Subagent (started by the Agent tool): j-cc never moves your commands to the background, because you may finish before a background job reports.
