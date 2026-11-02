@@ -1,5 +1,5 @@
 import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register } from 'claude-code'
-import { hasBypass, judge, reason, type JudgeOptions } from './rules'
+import { screen, type ScreenOptions } from './bypass'
 import type { Shell } from './shell'
 
 // Codex 의 exec_command/write_stdin 처럼, 명령을 시작하고 몇 초 안에 중간 출력과 session_id 를 돌려준다.
@@ -197,7 +197,7 @@ export async function registerExecTools($: EngineInterface, { blockChaining = tr
 
 type On = Parameters<Register>[0]
 
-export function registerExec(on: On, judgeOptions: JudgeOptions = {}): void {
+export function registerExec(on: On, screenOptions: ScreenOptions): void {
   // exec 은 셸 명령을 그대로 돌리므로, exec 자체를 따로 허락받지 않고 같은 명령의 Bash/PowerShell 판정을 따른다.
   on('tool.check', { tool: EXEC_TOOL }, async ($, e, next) => {
     const own = await next(e)
@@ -219,8 +219,8 @@ export function registerExec(on: On, judgeOptions: JudgeOptions = {}): void {
     if (!command.trim()) return { deny: 'cmd is required.' }
     const shell = shellOf(args)
     // exec 은 기다리지 않고 돌아오므로 백그라운드 실행처럼 판정한다. 파일 보기·검색·수정과 끝없는 루프는 그대로 막는다.
-    const verdict = hasBypass(command, shell) ? null : judge(command, shell, true, judgeOptions)
-    if (verdict) return { deny: reason(verdict) }
+    const screened = await screen($, command, shell, true, screenOptions)
+    if ('deny' in screened) return { deny: screened.deny }
 
     const running = [...runs.values()].filter(run => !isDone(run)).length
     if (running >= MAX_RUNNING) return { deny: `${running} commands are still running; poll or terminate some first.` }

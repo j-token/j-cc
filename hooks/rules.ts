@@ -355,13 +355,24 @@ function chainOperator(command: string, shell: Shell): string | null {
   return null
 }
 
-export function hasBypass(command: string, shell: Shell): boolean {
-  return tokenize(command, shell).comments.some(c => BYPASS.test(c.trim()))
+export function bypassReason(command: string, shell: Shell): string | null {
+  for (const comment of tokenize(command, shell).comments) {
+    const m = BYPASS.exec(comment.trim())
+    if (m) return m[1].trim()
+  }
+  return null
 }
 
-// 파일 작업과 대기 판정이 더 구체적인 안내를 주므로 체이닝은 마지막에 본다.
-export function judge(command: string, shell: Shell, background: boolean, { blockChaining = true }: JudgeOptions = {}): Verdict | null {
-  if (!command.trim() || hasBypass(command, shell)) return null
+export const hasBypass = (command: string, shell: Shell) => bypassReason(command, shell) !== null
+
+export function judge(command: string, shell: Shell, background: boolean, options: JudgeOptions = {}): Verdict | null {
+  if (hasBypass(command, shell)) return null
+  return ruleVerdict(command, shell, background, options)
+}
+
+// 우회 주석과 상관없이 규칙이 무엇을 막는지 본다. 파일 작업과 대기 판정이 더 구체적인 안내를 주므로 체이닝은 마지막에 본다.
+export function ruleVerdict(command: string, shell: Shell, background: boolean, { blockChaining = true }: JudgeOptions = {}): Verdict | null {
+  if (!command.trim()) return null
   const verdict = dedicatedToolVerdict(command, shell) ?? timingVerdict(command, shell, background)
   if (verdict || !blockChaining) return verdict
   const op = chainOperator(command, shell)
@@ -415,11 +426,22 @@ const GUIDANCE: Record<Kind, string[]> = {
   ],
 }
 
+const verdictTag = (verdict: Verdict) => (verdict.detail ? `${verdict.kind}, ${verdict.detail}` : verdict.kind)
+
+export const guidance = (verdict: Verdict) => GUIDANCE[verdict.kind].join('\n')
+
+const BYPASS_HINT =
+  'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely why the dedicated tool cannot do it; a small model checks that reason before the command runs.'
+
 export function reason(verdict: Verdict): string {
-  const tag = verdict.detail ? `${verdict.kind}, ${verdict.detail}` : verdict.kind
+  return [`[j-cc] Blocked (${verdictTag(verdict)}): this command was not run.`, guidance(verdict), BYPASS_HINT].join('\n')
+}
+
+export function bypassRejected(verdict: Verdict, statedReason: string, advice: string): string {
   return [
-    `[j-cc] Blocked (${tag}): this command was not run.`,
-    ...GUIDANCE[verdict.kind],
-    'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>`.',
+    `[j-cc] Bypass rejected (${verdictTag(verdict)}): this command was not run.`,
+    `Your reason "${statedReason}" does not show that the shell is needed here.`,
+    advice ? `- ${advice}` : guidance(verdict),
+    'If the dedicated tool truly cannot do this, rerun with a `# j-cc:allow:` reason that names what it cannot do.',
   ].join('\n')
 }

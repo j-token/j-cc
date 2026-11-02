@@ -52,7 +52,7 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `modelJudge` | `true` | Judge ambiguous commands with the in-CC model. Off: deterministic rules only. |
+| `modelJudge` | `true` | Judge ambiguous commands and bypass reasons with the in-CC model. Off: deterministic rules only, and bypass comments pass unreviewed. |
 | `blockChaining` | `true` | Deny calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
 
 ## Bypass
@@ -60,8 +60,14 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 Rerun a wrongly blocked command with a reason comment. The old `# use-right-tool:allow:` marker is accepted too.
 
 ```
-grep -rn TODO src # j-cc:allow: need raw byte offsets
+grep -c MAGIC app.exe # j-cc:allow: the Grep tool skips binary files
 ```
+
+When a rule would block the command, the in-CC model (Haiku) reads the rule, the command and the reason and decides whether the shell is really needed.
+- A vague reason, convenience, or a job the suggested tool can do is denied as `Bypass rejected`, with one sentence naming the tool or approach to use instead.
+- Reviews are remembered per command.
+- A comment on a command no rule blocks (for example to stay in the foreground) passes without a review.
+- With `modelJudge` off, or when the model gives no answer, the comment is trusted as before.
 
 j-cc guides the workflow; it is not a security boundary.
 
