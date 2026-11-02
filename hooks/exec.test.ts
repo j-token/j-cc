@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { EXEC_TOOL, MAX_YIELD_MS, POLL_TOOL, appendOutput, clip, statusLine, takeReport, yieldMs, type Run } from './exec'
+import { EXEC_TOOL, MAX_YIELD_MS, POLL_TOOL, appendOutput, clip, passedPermission, statusLine, takeReport, yieldMs, type Run } from './exec'
 
 test('출력이 한도를 넘으면 앞부분 일부와 뒷부분을 남긴다', () => {
   expect(clip('0123456789', 20)).toBe('0123456789')
@@ -58,6 +58,16 @@ test('끝난 명령의 보고에는 종료 코드와 한도에 맞춘 출력이 
   const run = fakeRun({ unread: 'built\n', exit: { code: 0, signal: null } })
 
   expect(takeReport(run, 1_000, 3)).toBe('Process exited with code 0 (wall 1.0s)\nOutput:\n\n…[3 chars omitted]…\nlt\n')
+})
+
+test('권한을 통과해 처리기를 찾지 못한 결과일 때만 명령을 실행한다', () => {
+  const unanswered = 'j-cc registered the tool exec but no tool.call hook answered this call: add on("tool.call", ...) to the plugin.'
+  const refused = "Permission to use mcp__j-cc__exec denied by plugin j-cc: mkdir in '/tmp/x' needs approval."
+
+  expect(passedPermission({ isError: true, text: unanswered })).toBe(true)
+  expect(passedPermission({ isError: true, text: refused })).toBe(false)
+  expect(passedPermission({ deny: 'blocked' })).toBe(false)
+  expect(passedPermission({ text: 'ok' })).toBe(false)
 })
 
 test('poll은 session_id 없이 부르면 실행 중인 명령이 없다고 알린다', async $ => {

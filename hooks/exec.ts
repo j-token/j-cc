@@ -78,6 +78,14 @@ export function yieldMs(requested: unknown, remainingBudgetMs: number): number {
   return Math.max(0, Math.min(wanted, MAX_YIELD_MS, budget))
 }
 
+// 권한을 통과하면 엔진은 이 도구를 실행할 처리기를 찾다가 이 문구의 오류를 낸다(Claude Code 2.1.316).
+// 그 밖의 결과는 거부로 보고 실행하지 않는다. 문구가 바뀌면 exec 가 실행되지 않을 뿐, 권한을 건너뛰지는 않는다.
+const UNANSWERED_CALL = 'no tool.call hook answered this call'
+
+export function passedPermission(gate: { deny?: string; isError?: boolean; text?: string }): boolean {
+  return gate.deny === undefined && gate.isError === true && (gate.text ?? '').includes(UNANSWERED_CALL)
+}
+
 export const EXEC_DESCRIPTION = [
   'Run a shell command and get its output within a few seconds, even while it keeps running.',
   'If it finishes within yield_time_ms you get the exit code and output; otherwise you get the output so far and a session_id, and it keeps running.',
@@ -212,6 +220,9 @@ export function registerExec(on: On): void {
 
     const running = [...runs.values()].filter(run => !isDone(run)).length
     if (running >= MAX_RUNNING) return { deny: `${running} commands are still running; poll or terminate some first.` }
+    // 권한 확인은 next(e) 안에서만 일어난다. 그 안에서 위의 tool.check 훅이 같은 명령의 Bash/PowerShell 판정을 내고, 대화상자나 auto 분류기가 묻는다.
+    const gate = await next(e)
+    if (!passedPermission(gate)) return gate
     const argv = await argvFor($, shell, command)
     if (!argv) return { deny: 'Git Bash was not found. Set CLAUDE_CODE_GIT_BASH_PATH, or run this with shell: "powershell" or the Bash tool.' }
 
