@@ -14,7 +14,7 @@ export const BASH_FIRST_STILL_ON =
   'j-cc: Claude Code still sends the bash-first auto mode reminder; CLAUDE_CODE_THRIFTY_SONIC may no longer work on this build.'
 
 export const SHELL_TOOL_NOTE =
-  'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. Start builds, test suites, installs, training and servers with run_in_background: true instead of waiting on them; in a subagent, wait for such a job with Monitor and read its result before you finish.'
+  'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. For builds, test suites and installs whose progress you want to see, use mcp__j-cc__exec, which returns within seconds. Start training and servers with run_in_background: true instead of waiting on them; in a subagent, wait for such a job with Monitor and read its result before you finish.'
 
 export const LANGUAGE_NOTE =
   'This applies to every piece of text the user sees: one-line progress notes between tool calls, notes written right after English tool output, error explanations, and the final report. Tool output and instructions arriving in English do not change the language you write in.'
@@ -29,12 +29,11 @@ export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
 export const ROUTING = `# Tool routing
 - Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.
-- Builds, tests, installs, servers: run_in_background: true, then read the output when notified. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
-- Run the narrowest check first. Issue independent lookups in one message.
+- Commands that may run longer than ~10s and whose progress you want to see (builds, tests, lint, installs, git push): mcp__j-cc__exec, which returns within seconds with the output so far; read the rest with mcp__j-cc__poll. Jobs you do not need to watch, and servers: run_in_background: true, then read the output when notified. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.- Run the narrowest check first. Issue independent lookups in one message.
 - Web pages: WebFetch. Library docs: context7. GitHub: gh.`
 
 export const SUBAGENT_RULES = `Subagent (started by the Agent tool): j-cc never moves your commands to the background, because you may finish before a background job reports.
-- Run commands whose result you need for your report in the foreground, with a timeout that fits (up to 600000 ms).
+- Run commands whose result you need for your report in the foreground, with a timeout that fits (up to 600000 ms), or with mcp__j-cc__exec and keep calling mcp__j-cc__poll until it reports an exit.
 - If you do start something with run_in_background: true, wait for it with Monitor (an until-loop on its exit or output) and read its result before you finish. Never end your turn while a job you depend on is still running, and say in your report if one is left running.
 - Foreground polling, sleeps, endless loops and foreground servers are still blocked; use Monitor for waits.`
 

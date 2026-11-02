@@ -10,6 +10,7 @@ import {
   slowNote,
   type Timings,
 } from './background'
+import { registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
@@ -119,6 +120,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
     if ((await $.env.get('CLAUDE_CODE_THRIFTY_SONIC')) === undefined) await $.env.set('CLAUDE_CODE_THRIFTY_SONIC', '0')
+    await registerExecTools($)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -163,6 +165,8 @@ export const register: Register = (on, options) => {
     if (!isSlow) return brief(r)
     return brief(withNote(r, `${slowNote(seconds, facts.isMain)} ${replyLanguageNote(await configuredLanguage($))}`))
   }).catch(($, e, next) => next(e))
+
+  registerExec(on)
 
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const r = await next(e)

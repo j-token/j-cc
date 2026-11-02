@@ -32,6 +32,7 @@ Findings from Claude Code 2.1.301:
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
 | Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. A `# Automatic backgrounding (j-cc)` system-prompt section tells Claude about this up front, so it does not run dependent steps before the completion notification. |
+| exec / poll tools | Adds `mcp__j-cc__exec`, which starts a command and returns within 5-8 seconds with the output so far and a `session_id` even while it keeps running, and `mcp__j-cc__poll`, which reads new output or stops it (`terminate: true`), the way Codex's `exec_command`/`write_stdin` do. Nothing to configure: exec follows the Bash/PowerShell permission rules for the same command, poll never asks, j-cc's shell-misuse rules apply, and Git Bash is found on its own (`CLAUDE_CODE_GIT_BASH_PATH` first). |
 | Subagent context | Subagents are never auto-backgrounded, so each subagent's first shell result carries a one-time note: run what you need in the foreground, and if you background something, wait for it with Monitor before you finish. The slow-command note differs for main and subagents too. |
 | In-CC model judge | Commands the rules cannot decide are classified by Claude Code's own `$.model` (Haiku), only when the command or the script it runs shows loop, wait or server signals, and cached per command: `quick`, `long_job`, `wait_poll`, `endless`, `server`. |
 | Regression alert | If the shell-first reminder still shows up despite the variable, a toast says so and the paragraph is rewritten as a fallback. |
@@ -66,6 +67,7 @@ j-cc guides the workflow; it is not a security boundary.
 - Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards, tool descriptions, backgrounding and the environment variable still work.
 - `CLAUDE_CODE_THRIFTY_SONIC` is an undocumented experiment switch and may change; the regression toast tells you when it stops working.
 - The rules are approximate. Durations are remembered per command key (`npm test`, `cargo build`, `python train.py`, ...).
+- exec does not go through settings.json PreToolUse hooks matched on `Bash`/`PowerShell`; only the permission rules and j-cc's guards apply. Each call opens a fresh shell with stdin closed, so interactive prompts do not work.
 
 ## Development
 

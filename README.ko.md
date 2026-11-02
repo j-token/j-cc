@@ -32,6 +32,7 @@ Claude Code 2.1.301을 조사한 결과 다음 사실을 확인했습니다.
 | 셸 오용 차단 | 셸로 파일을 보기·검색·쓰기·수정하면 막고 Read, Grep, Glob, Write, Edit로 안내합니다. |
 | 루프·대기 차단 | `tail -f`, 무한 루프, 포그라운드 폴링·대기, 포그라운드 dev 서버를 막고 Monitor, `run_in_background`, `/loop`, `CronCreate`로 안내합니다. |
 | 오래 걸리는 명령의 백그라운드 전환 | 설치, Docker 빌드, 학습·평가 스크립트, 120초보다 긴 `timeout`, 이전에 45초 이상 걸린 명령은 자동으로 `run_in_background: true`로 실행하고, 기다리지 말고 다른 일을 하라고 알립니다. 메인 세션에만 적용합니다. 시스템 프롬프트의 `# Automatic backgrounding (j-cc)` 섹션이 이 동작을 미리 알려, 완료 알림 전에는 결과에 의존하는 단계를 실행하지 않게 합니다. |
+| exec / poll 도구 | Codex의 `exec_command`/`write_stdin`처럼 동작하는 도구 두 개를 추가합니다. `mcp__j-cc__exec`는 명령을 시작하고, 명령이 아직 실행 중이어도 5~8초 안에 그때까지의 출력과 `session_id`를 돌려줍니다. `mcp__j-cc__poll`은 이어서 새 출력을 읽거나 `terminate: true`로 명령을 멈춥니다. 설정할 것은 없습니다. exec는 같은 명령의 Bash/PowerShell 권한 규칙을 따르고, poll은 권한을 묻지 않으며, j-cc의 셸 오용 차단도 똑같이 적용됩니다. Git Bash 경로는 `CLAUDE_CODE_GIT_BASH_PATH`를 먼저 보고 없으면 스스로 찾습니다. |
 | 서브에이전트 맥락 | 서브에이전트에는 자동 전환이 적용되지 않으므로, 서브에이전트마다 첫 셸 결과에 "결과가 필요한 명령은 포그라운드로, 백그라운드로 돌렸다면 끝나기 전에 Monitor로 기다릴 것"이라는 맥락을 한 번 붙입니다. 느린 명령 안내도 메인과 서브에이전트에 다르게 줍니다. |
 | CC 내부 모델 판정 | 규칙으로 정하지 못한 명령은 Claude Code의 `$.model`(Haiku)로 판정합니다. 명령이나 실행 스크립트에 루프·대기·서버 단서가 있을 때만 호출하며, 결과는 명령별로 캐시합니다. 판정 라벨은 `quick`, `long_job`, `wait_poll`, `endless`, `server`입니다. |
 | 회귀 감지 | 환경변수를 설정했는데도 셸 우선 리마인더가 다시 나타나면 토스트로 알리고, 예비로 해당 문단을 바꿉니다. |
@@ -66,6 +67,7 @@ j-cc는 작업 흐름을 돕는 도구이며 보안 경계가 아닙니다.
 - 조직이 관리하는 Claude Code에서는 `prompt.attachment`와 `prompt.compose` 훅이 사용자가 설치한 플러그인에서 실행되지 않습니다. 이 경우 셸 차단, 도구 설명 보강, 백그라운드 전환, 환경변수 설정만 동작합니다.
 - `CLAUDE_CODE_THRIFTY_SONIC`은 비공개 실험 변수라 이후 빌드에서 바뀔 수 있습니다. 그런 일이 생기면 회귀 감지 토스트가 알려 줍니다.
 - 규칙은 근사 판단입니다. 실행 시간 기록은 명령 키(`npm test`, `cargo build`, `python train.py` 등) 단위로 묶입니다.
+- exec는 settings.json의 `Bash`/`PowerShell` PreToolUse 훅을 거치지 않습니다. 권한 규칙과 j-cc 차단만 적용됩니다. 호출마다 새 셸을 열고 stdin을 닫으므로 대화형 프롬프트는 쓸 수 없습니다.
 
 ## 개발
 
