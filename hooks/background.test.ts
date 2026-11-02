@@ -58,6 +58,26 @@ test('briefs each subagent once and never backgrounds its commands', async ($, o
   expect(JSON.stringify(main)).not.toContain('[j-cc]')
 })
 
+test('서브에이전트는 시작할 때 과제 끝에 파일 도구와 셸 규칙을 받고 첫 셸 결과에서 다시 받지 않는다', async ($, on) => {
+  on('store.get', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: 0 }))
+  let spawnedPrompt = ''
+  on('agent.spawn', ($, e) => {
+    spawnedPrompt = e.prompt
+    return { model: 'claude-opus-5-5', agentId: 'sub-spawned' }
+  })
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+
+  await $.agent.spawn({ prompt: 'Find where the config is parsed.' })
+  const firstShell = await $.tool.call({ tool: 'Bash', command: 'git status', agentId: 'sub-spawned' } as never)
+
+  expect(spawnedPrompt).toStartWith('Find where the config is parsed.\n\n[j-cc] Context for this subagent:')
+  expect(spawnedPrompt).toContain('- Files: Read to view, Grep and Glob to search, Edit and Write to change them.')
+  expect(spawnedPrompt).toContain('j-cc blocks `&&`, `||` and `;` outside quotes')
+  expect(spawnedPrompt).toContain('Never end your turn while a job you depend on is still running')
+  expect(JSON.stringify(firstShell)).not.toContain('Context for this subagent')
+})
+
 test('moves long and remembered-slow commands to the background', async ($, on) => {
   const store = new Map<string, unknown>([[TIMINGS_STORE_KEY, { 'cargo test': { seconds: 200, backgrounded: 0 } }]])
   let now = 0

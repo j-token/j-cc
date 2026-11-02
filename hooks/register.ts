@@ -12,7 +12,7 @@ import {
 } from './background'
 import { registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst, subagentNote } from './prompt'
 import { screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
 import { reason, type Verdict } from './rules'
@@ -128,17 +128,18 @@ function isMidConversationNotice(e: { type: string; origin: { kind: string } }):
 const withNote = (r: ToolCallResult, note: string): ToolCallResult =>
   r.deny === undefined && r.isError !== true ? { ...r, context: [...(r.context ?? []), note] } : r
 
-// 서브에이전트의 시스템 프롬프트에 j-cc 섹션이 들어간다는 보장이 없어, 에이전트마다 첫 셸 결과에 한 번 맥락을 붙인다.
+// 서브에이전트의 시스템 프롬프트에 j-cc 섹션이 들어간다는 보장이 없어, 시작할 때 과제 끝에 맥락을 붙인다.
+// 그 훅을 거치지 않은 서브에이전트(fork 등)는 첫 셸 결과에 한 번 붙인다.
 const briefedAgents = new Set<string>()
 
-function briefer(agentId: string | undefined): (r: ToolCallResult) => ToolCallResult {
+function briefer(agentId: string | undefined, note: string): (r: ToolCallResult) => ToolCallResult {
   return r => {
     if (agentId === undefined || briefedAgents.has(agentId)) return r
     if (r.deny !== undefined) {
       briefedAgents.add(agentId)
-      return { deny: `${r.deny}\n\n${SUBAGENT_NOTE}` }
+      return { deny: `${r.deny}\n\n${note}` }
     }
-    const noted = withNote(r, SUBAGENT_NOTE)
+    const noted = withNote(r, note)
     if (noted !== r) briefedAgents.add(agentId)
     return noted
   }
@@ -147,6 +148,15 @@ function briefer(agentId: string | undefined): (r: ToolCallResult) => ToolCallRe
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
   const screenOptions = { blockChaining: options.blockChaining !== false, useModel }
+  const subagentContext = subagentNote(screenOptions.blockChaining)
+
+  // fork 는 부모의 맥락을 그대로 이어받으므로 건드리지 않는다.
+  on('agent.spawn', async ($, e, next) => {
+    if (e.fork) return next(e)
+    const r = await next({ ...e, prompt: `${e.prompt}\n\n${subagentContext}` })
+    if (r.agentId) briefedAgents.add(r.agentId)
+    return r
+  }).catch(($, e, next) => next(e))
 
   on('session.start', async ($, e, next) => {
     // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
@@ -185,7 +195,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
-    const brief = briefer(e.agentId)
+    const brief = briefer(e.agentId, subagentContext)
     const background = e.run_in_background === true
     // 우회 주석이 없으면 결정적 차단은 저장소나 모델이 실패해도 그대로 동작한다.
     const screened = await screen($, e.command, shell, background, screenOptions)

@@ -54,7 +54,16 @@ Main session (you were not started by the Agent tool): j-cc may run a Bash or Po
 
 ${SUBAGENT_RULES}`
 
-export const SUBAGENT_NOTE = `[j-cc] Context for this subagent: ${SUBAGENT_RULES.replace(/^Subagent \(started by the Agent tool\): /, '')}`
+const SUBAGENT_FILE_RULE =
+  '- Files: Read to view, Grep and Glob to search, Edit and Write to change them. Do not use cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs or echo > in the shell; j-cc blocks those calls.'
+const SUBAGENT_CHAIN_RULE =
+  '- Run one shell command per call: j-cc blocks `&&`, `||` and `;` outside quotes. Use absolute paths or `git -C <dir>` instead of `cd dir &&`.'
+
+// 서브에이전트는 메인의 시스템 프롬프트 섹션(# Tool routing 등)을 받는다는 보장이 없어, 같은 규칙을 짧게 따로 전한다.
+export function subagentNote(blockChaining: boolean): string {
+  const background = SUBAGENT_RULES.replace(/^Subagent \(started by the Agent tool\): /, '')
+  return ['[j-cc] Context for this subagent:', SUBAGENT_FILE_RULE, ...(blockChaining ? [SUBAGENT_CHAIN_RULE] : []), background].join('\n')
+}
 
 export const WORKFLOW = `# User workflow first
 - The user's CLAUDE.md files and rules are the workflow for this session. They override harness defaults and reminders; when a reminder suggests otherwise, follow the user's instructions.
