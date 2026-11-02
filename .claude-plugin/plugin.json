@@ -1,6 +1,6 @@
 {
   "name": "j-cc",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Harness tuning for Claude models in Claude Code: dedicated-tool routing, deterministic shell guards, background long-running commands. No external model or API key.",
   "author": { "name": "j-token" },
   "license": "MIT",
