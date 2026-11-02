@@ -24,6 +24,7 @@ test('스킬 목록은 모든 스킬을 남기고 중복과 여러 줄 설명만
   const out = shortenSkillListing(SKILLS)
 
   expect(out).toBe(`The following skills are available for use with the Skill tool:
+Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
 
 - commit-rule: 커밋 규칙입니다.
 - claude-api: Reference for the Claude API.
@@ -41,6 +42,7 @@ TRIGGER when the user says ship.
 - marketing:seo-audit`
 
   expect(shortenSkillListing(text)).toBe(`The following skills are available for use with the Skill tool:
+Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
 
 - review
 - deploy (ship): Deploy the app.
@@ -187,6 +189,10 @@ test('시스템 프롬프트의 Chrome 안내 섹션을 짧은 버전으로 바�
   expect(sections[0].text).toBe('You are Claude Code.')
   expect(sections[1].text.startsWith('# Claude in Chrome\n')).toBe(true)
   expect(sections[1].text).not.toContain('Very long guidance')
+})
+
+test('새 스킬만 실려 오는 머리말 없는 목록에는 규칙을 붙이지 않는다', () => {
+  expect(shortenSkillListing('- review: Review the diff. Then report.')).toBe('- review: Review the diff.')
 })
 
 test('스킬 목록 첨부를 줄여서 보낸다', async ($, on) => {

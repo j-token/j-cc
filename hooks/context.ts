@@ -48,7 +48,13 @@ export function shortenListing(text: string, options: { dropSuffix?: RegExp } = 
   return out.join('\n')
 }
 
-export const shortenSkillListing = (text: string) => shortenListing(text)
+export const SKILL_RULE =
+  'Before starting a task, compare it with these skills. When a skill\'s description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.'
+
+// 첫 목록에만 머리말이 붙고, 뒤에 새 스킬만 실려 오는 첨부에는 없다. 머리말이 없으면 규칙도 붙이지 않는다.
+const SKILL_LISTING_HEADER = /^(The following skills are available[^\n]*\n)/
+
+export const shortenSkillListing = (text: string) => shortenListing(text).replace(SKILL_LISTING_HEADER, `$1${SKILL_RULE}\n`)
 
 export const shortenAgentListing = (text: string) => shortenListing(text, { dropSuffix: /\s*\(Tools: [^)]*\)\s*$/ })
 
