@@ -21,7 +21,7 @@ Findings from Claude Code 2.1.301:
 | Foreground wait per shell call | 4.5s | 8.8s |
 | Code-editing turns with no check after the last edit | 6.7% | 14.5% |
 
-- Subagents under j-cc still viewed and searched files from the shell 12.7 / 9.4 times per 100 shell calls, about 4-5 times the main session, and were blocked twice as often. Main-session prompt sections do not reach them, so they now get the rules when they start.
+- Subagents under j-cc still viewed and searched files from the shell 12.7 / 9.4 times per 100 shell calls, about 4-5 times the main session, and were blocked twice as often. Main-session prompt sections are not guaranteed to reach them, so they now get the rules when they start.
 
 ## What it does
 
