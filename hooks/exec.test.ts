@@ -26,6 +26,23 @@ test('상태 줄은 종료 코드나 이어서 읽을 session_id를 알려 준�
   expect(statusLine({ id: 3, startedAtMs: 0 }, 1_000)).toContain('Process running with session_id 3 (wall 1.0s)')
 })
 
+test('셸 판정이 ask이면 exec에 대한 엔진 판정을 넘기고, allow와 deny는 셸 판정을 따른다', async ($, on) => {
+  const SHELL_VERDICTS: Record<string, 'allow' | 'ask' | 'deny'> = { 'git status': 'allow', 'mkdir /outside': 'ask', 'rm -rf /': 'deny' }
+  on('tool.check', ($, e) => {
+    const input = e.input as { command?: string }
+    if (e.tool === EXEC_TOOL) return { decision: 'ask', reason: 'engine verdict for exec' }
+    return { decision: SHELL_VERDICTS[input.command ?? ''], reason: `shell verdict for ${input.command}` }
+  })
+
+  const allowed = await $.tool.check({ tool: EXEC_TOOL, input: { cmd: 'git status' } })
+  const asked = await $.tool.check({ tool: EXEC_TOOL, input: { cmd: 'mkdir /outside' } })
+  const denied = await $.tool.check({ tool: EXEC_TOOL, input: { cmd: 'rm -rf /' } })
+
+  expect(allowed.decision).toBe('allow')
+  expect(asked).toEqual({ decision: 'ask', reason: 'engine verdict for exec' })
+  expect(denied.decision).toBe('deny')
+})
+
 test('exec은 j-cc 셸 규칙을 그대로 적용해 파일 보기 명령을 막는다', async ($, on) => {
   on('env.get', () => ({ value: undefined }))
   const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'cat src/app.ts' } as never)

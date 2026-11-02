@@ -77,6 +77,7 @@ j-cc는 작업 흐름을 돕는 도구이며 보안 경계가 아닙니다.
 - `CLAUDE_CODE_THRIFTY_SONIC`은 비공개 실험 변수라 이후 빌드에서 바뀔 수 있습니다. 그런 일이 생기면 회귀 감지 토스트가 알려 줍니다.
 - 규칙은 근사 판단입니다. 실행 시간 기록은 명령 키(`npm test`, `cargo build`, `python train.py` 등) 단위로 묶입니다.
 - 체이닝 판별은 따옴표만 보는 단순한 방식이라 `for …; do …; done`, PowerShell `{ …; … }` 블록 안의 `;`도 막습니다. 이런 스크립트는 scratchpad에 파일로 쓰고 그 파일을 실행하게 안내합니다.
+- exec의 권한은 같은 명령의 Bash/PowerShell 판정을 따릅니다. 그 판정이 `ask`이면 엔진이 exec 자체에 내린 판정을 그대로 씁니다. 그래서 auto mode에서는 분류기가 판단하고, 기본 모드에서 "항상 허용"을 고르면 그 규칙이 남습니다. exec 전체를 허용 규칙에 넣으면, Bash였다면 물었을 명령도 묻지 않고 실행됩니다.
 - exec는 settings.json의 `Bash`/`PowerShell` PreToolUse 훅을 거치지 않습니다. 권한 규칙과 j-cc 차단만 적용됩니다. 호출마다 새 셸을 열고 stdin을 닫으므로 대화형 프롬프트는 쓸 수 없습니다.
 
 ## 개발

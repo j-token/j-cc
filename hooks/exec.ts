@@ -204,7 +204,10 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     if (own.decision === 'deny') return own
     const args = (e.input ?? {}) as ExecArgs
     const command = typeof args.cmd === 'string' ? args.cmd : ''
-    return $.tool.check({ tool: shellToolName(shellOf(args)), input: { command } })
+    const shellVerdict = await $.tool.check({ tool: shellToolName(shellOf(args)), input: { command } })
+    // 훅이 돌려준 ask 는 사람만 답할 수 있어, auto 분류기의 허용도 "항상 허용" 규칙도 듣지 않고 매번 묻는다.
+    // 같은 명령의 셸 판정이 ask 이면 엔진이 exec 에 내린 판정을 받은 그대로 넘겨, 묻는 일을 모드의 결정자에게 맡긴다.
+    return shellVerdict.decision === 'ask' ? own : shellVerdict
   }).catch(() => ({ decision: 'deny' as const, reason: 'j-cc could not check the permission for this command.' }))
 
   // poll 은 exec 이 이미 허락받고 시작한 명령의 출력을 읽거나 멈추기만 한다.

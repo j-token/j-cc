@@ -77,6 +77,7 @@ j-cc guides the workflow; it is not a security boundary.
 - `CLAUDE_CODE_THRIFTY_SONIC` is an undocumented experiment switch and may change; the regression toast tells you when it stops working.
 - The rules are approximate. Durations are remembered per command key (`npm test`, `cargo build`, `python train.py`, ...).
 - Chaining detection only tracks quotes, so `;` inside `for …; do …; done` or a PowerShell `{ …; … }` block is denied too; the guidance points to writing such a script to the scratchpad and running the file.
+- exec follows the Bash/PowerShell verdict for the same command. When that verdict is `ask`, exec uses the engine's own verdict for exec, so auto mode's classifier decides and an "always allow" choice in default mode is kept. An allow rule for all of exec also runs commands that Bash would have asked about.
 - exec does not go through settings.json PreToolUse hooks matched on `Bash`/`PowerShell`; only the permission rules and j-cc's guards apply. Each call opens a fresh shell with stdin closed, so interactive prompts do not work.
 
 ## Development
