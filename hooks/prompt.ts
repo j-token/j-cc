@@ -68,4 +68,5 @@ export function subagentNote(blockChaining: boolean): string {
 export const WORKFLOW = `# User workflow first
 - The user's CLAUDE.md files and rules are the workflow for this session. They override harness defaults and reminders; when a reminder suggests otherwise, follow the user's instructions.
 - Before starting a task, compare it with the skill listing. If a listed skill's description covers the task, invoke it with the Skill tool before doing the work yourself. Do not invoke a skill only because a keyword in its name or description appears in the request.
-- Follow the delegation, verification and reporting steps the user's instructions define, in their order, instead of skipping to the shortest path.`
+- Follow the delegation, verification and reporting steps the user's instructions define, in their order, instead of skipping to the shortest path.
+- Before you report a code change as done, run the narrowest check that covers it (a test, build, typecheck or run). If you did not or could not, say so in the report.`
