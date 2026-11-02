@@ -30,6 +30,7 @@ Findings from Claude Code 2.1.301:
 | System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
 | Skill use | The skill listing header and `# User workflow first` both say: before starting a task, compare it with the listed skills and first call the skills whose descriptions cover it; a keyword match alone is not a reason to call one. Listing descriptions are cut to their first sentence and duplicates dropped. |
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. Right after English tool output or a harness notice, Claude tends to write its next short note in English, so every main-session tool result and every notice the harness injects mid-conversation (task completions, messages sent while it works, ...) ends with one sentence: reply in your `language`, or without one, in the language you write in. |
+| Reply-language drift check | With `language` set, a main-session reply whose letters are almost all ASCII (code, paths and URLs left out, 20 letters or more) goes to the in-CC small model, which says whether it is written in your `language`. The setting is free-form, so the model reads it. When it is not, the next tool result carries a warning that the last note was off-language, and a toast says so. The check runs alongside the tool, so it adds almost no wait; when it fails, no warning. A final answer with no tool calls is flagged at the next turn's first tool result. Off with `modelJudge`. |
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
 | Command chaining | Denies Bash, PowerShell and exec calls that chain commands with `&&`, `\|\|` or `;` outside quotes and asks for one command per call. Pipes (`\|`), background `&` and heredoc bodies are not checked. The Bash and PowerShell descriptions say so up front, because the stock PowerShell description recommends `cmd1 && cmd2`. Turn it off with `blockChaining`. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
@@ -52,7 +53,7 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `modelJudge` | `true` | Judge ambiguous commands and bypass reasons with the in-CC model. Off: deterministic rules only, and bypass comments pass unreviewed. |
+| `modelJudge` | `true` | Judge ambiguous commands, bypass reasons and reply-language drift with the in-CC model. Off: deterministic rules only, bypass comments pass unreviewed, and no drift check. |
 | `blockChaining` | `true` | Deny calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
 
 ## Bypass

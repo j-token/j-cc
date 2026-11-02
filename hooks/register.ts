@@ -14,6 +14,7 @@ import { registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
 import { screen } from './bypass'
+import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
 import { reason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
@@ -96,6 +97,18 @@ async function configuredLanguage($: EngineInterface): Promise<unknown> {
   }
 }
 
+// 직전 응답 중 설정 언어가 아닐 수 있어 모델에게 물어볼 텍스트. 다음 메인 루프 도구 호출이 가져간다.
+let suspectAnswer: string | null = null
+
+// language 설정은 자유 형식이라 해석을 모델에 맡긴다. 실패가 밖으로 새면 훅의 catch 가 도구를 한 번 더 실행하므로 삼킨다.
+async function driftedFrom($: EngineInterface, answer: string): Promise<string | null> {
+  const language = await configuredLanguage($)
+  if (typeof language !== 'string' || !language.trim()) return null
+  const target = language.trim()
+  const label = await $.model.classify(answer, [inLanguageLabel(target), OTHER_LANGUAGE_LABEL]).catch(() => undefined)
+  return label === OTHER_LANGUAGE_LABEL ? target : null
+}
+
 // 대화 맨 앞에 한 번 실리는 목록과 맥락은 사용자에게 쓰는 응답 바로 앞에 오지 않으므로 언어 문장을 붙이지 않는다.
 const UPFRONT_ATTACHMENTS = new Set([
   'language',
@@ -143,10 +156,24 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // 서브에이전트의 출력은 사용자보다 부모 에이전트가 읽으므로 메인 루프에만 붙인다.
+  on('turn.step', async function* ($, e, next) {
+    const r = yield* next(e)
+    if (useModel && e.agentId === undefined && mayBeEnglish(r.answer)) suspectAnswer = r.answer
+    return r
+  })
+
   on('tool.call', async ($, e, next) => {
+    if (e.agentId !== undefined) return next(e)
+    // 병렬 도구 호출 중 하나에만 경고가 붙도록 먼저 꺼내 비운다. 판정은 도구 실행과 겹쳐 돌린다.
+    const suspect = suspectAnswer
+    suspectAnswer = null
+    const drift = suspect === null ? Promise.resolve(null) : driftedFrom($, suspect)
     const r = await next(e)
-    if (e.agentId !== undefined || r.deny !== undefined) return r
-    return { ...r, context: [...(r.context ?? []), replyLanguageNote(await configuredLanguage($))] }
+    const language = await drift
+    if (language) $.ui.toast(driftToast(language))
+    if (r.deny !== undefined) return language ? { deny: `${r.deny}\n\n${driftWarning(language)}` } : r
+    const notes = [replyLanguageNote(await configuredLanguage($)), ...(language ? [driftWarning(language)] : [])]
+    return { ...r, context: [...(r.context ?? []), ...notes] }
   }).catch(($, e, next) => next(e))
 
   on('prompt.attachment', async ($, e, next) => {
