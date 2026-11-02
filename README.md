@@ -12,14 +12,16 @@ Findings from Claude Code 2.1.301:
   - the Bash tool description loses its `IMPORTANT` warning to use the dedicated tools instead of find, grep, cat, head and sed;
   - auto mode adds a reminder saying files can be read with cat/head/sed -n, searched with grep/find and edited with sed or heredocs, "The choice is yours".
 - GPT models reached through a proxy are unknown to Claude Code, so the experiment stays off for them, which is why they pick the dedicated tools more often under the same harness.
-- 60 days of real transcripts (2,558 files). The GPT sample is small (40 sessions) and its tasks differ, so not every gap is the model's.
+- Transcripts from 2026-09-10 to 11-02 (3,581 files; interactive CLI sessions only) compare Opus main sessions with and without j-cc over the same period (from 10-16, when j-cc started). Tasks differ between sessions, so not every gap is j-cc's. Method, the full tables and the paper the changes rest on ([arXiv:2609.00006](https://arxiv.org/html/2609.00006v1)): [docs/harness-engineering-evidence.md](docs/harness-engineering-evidence.md).
 
-| Metric | Opus 5.5 (main) | GPT (main) |
+| Metric (Opus, main session) | j-cc (38) | No j-cc, since 10-16 (120) |
 |---|---|---|
-| File views / searches per 100 shell calls | 25.9 / 28.9 | 0 / 0.8 |
-| Foreground commands over 60s | 434 | 0 |
-| Hours blocked in the foreground | 34 | 0.3 |
-| Sessions using a Skill | 35.5% | 63.6% |
+| File views / searches per 100 shell calls | 3.3 / 1.8 | 8.0 / 9.2 |
+| Foreground commands over 60s per 1,000 shell calls | 11.5 | 28.6 |
+| Foreground wait per shell call | 4.5s | 8.8s |
+| Code-editing turns with no check after the last edit | 6.7% | 14.5% |
+
+- Subagents under j-cc still viewed and searched files from the shell 12.7 / 9.4 times per 100 shell calls, about 4-5 times the main session, and were blocked twice as often. Main-session prompt sections do not reach them, so they now get the rules when they start.
 
 ## What it does
 
@@ -27,7 +29,7 @@ Findings from Claude Code 2.1.301:
 |---|---|
 | Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start. The engine reads this variable first, so nothing depends on matching prompt wording. Checked in 2.1.301 and still the same in 2.1.316. A value you set yourself is left alone. |
 | Tool descriptions | Appends dedicated-tool and `run_in_background` guidance to the Bash and PowerShell descriptions. |
-| System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
+| System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first, run the narrowest check before reporting a code change as done or say it was not run) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
 | Skill use | The skill listing header and `# User workflow first` both say: before starting a task, compare it with the listed skills and first call the skills whose descriptions cover it; a keyword match alone is not a reason to call one. Listing descriptions are cut to their first sentence and duplicates dropped. |
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. Right after English tool output or a harness notice, Claude tends to write its next short note in English, so every main-session tool result and every notice the harness injects mid-conversation (task completions, messages sent while it works, ...) ends with one sentence: reply in your `language`, or without one, in the language you write in. |
 | Reply-language drift check | With `language` set, a main-session reply whose letters are almost all ASCII (code, paths and URLs left out, 20 letters or more) goes to the in-CC small model, which says whether it is written in your `language`. The setting is free-form, so the model reads it. When it is not, the next tool result carries a warning that the last note was off-language, and a toast says so. The check runs alongside the tool, so it adds almost no wait; when it fails, no warning. A final answer with no tool calls is flagged at the next turn's first tool result. Off with `modelJudge`. |
@@ -36,7 +38,7 @@ Findings from Claude Code 2.1.301:
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
 | Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. A `# Automatic backgrounding (j-cc)` system-prompt section tells Claude about this up front, so it does not run dependent steps before the completion notification. |
 | exec / poll tools | Adds `mcp__j-cc__exec`, which starts a command and returns within 5-8 seconds with the output so far and a `session_id` even while it keeps running, and `mcp__j-cc__poll`, which reads new output or stops it (`terminate: true`), the way Codex's `exec_command`/`write_stdin` do. Nothing to configure: exec follows the Bash/PowerShell permission rules for the same command, poll never asks, j-cc's shell-misuse rules apply, and Git Bash is found on its own (`CLAUDE_CODE_GIT_BASH_PATH` first). |
-| Subagent context | Subagents are never auto-backgrounded, so each subagent's first shell result carries a one-time note: run what you need in the foreground, and if you background something, wait for it with Monitor before you finish. The slow-command note differs for main and subagents too. |
+| Subagent context | When a subagent starts, its task prompt ends with j-cc's rules for it: files go through Read, Grep, Glob, Edit and Write (shell file commands are blocked), one shell command per call when `blockChaining` is on, and, since subagents are never auto-backgrounded, run what you need in the foreground and wait with Monitor for anything you background. Forks inherit the parent's context and are left alone; a subagent that did not get the rules at start gets them once on its first shell result. The slow-command note differs for main and subagents too. |
 | In-CC model judge | Commands the rules cannot decide are classified by Claude Code's own `$.model` (Haiku), only when the command or the script it runs shows loop, wait or server signals, and cached per command: `quick`, `long_job`, `wait_poll`, `endless`, `server`. |
 | Regression alert | If the shell-first reminder still shows up despite the variable, a toast says so and the paragraph is rewritten as a fallback. |
 
