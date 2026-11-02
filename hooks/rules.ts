@@ -4,8 +4,9 @@
 import { PYTHON, SCRIPT_RUNNERS, hasFlag, operands } from './common'
 import { commandName, stripPrefix, tokenize, type Segment, type Shell } from './shell'
 
-type Kind = 'write' | 'edit' | 'search' | 'view' | 'follow' | 'forever' | 'schedule' | 'poll' | 'wait' | 'watch'
+type Kind = 'write' | 'edit' | 'search' | 'view' | 'follow' | 'forever' | 'schedule' | 'poll' | 'wait' | 'watch' | 'chain'
 export type Verdict = { kind: Kind; detail?: string }
+export type JudgeOptions = { blockChaining?: boolean }
 
 const NULL_TARGET = /^(\/dev\/(null|stdout|stderr|tty)|\$null|nul|con)$/i
 const SPECIAL_PATH = /^\/(proc|sys|dev)\//
@@ -323,13 +324,48 @@ function timingVerdict(command: string, shell: Shell, background: boolean, nesti
   return null
 }
 
+// heredoc 본문은 셸 문법이 아니라 데이터이므로 연결자 검사에서 뺀다.
+const HEREDOC = /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g
+
+// 따옴표 밖의 &&, ||, ; 를 찾는다. 파이프(|)와 백그라운드(&)는 연결자로 보지 않는다.
+// 반복문의 `; do` 와 PowerShell 블록 안의 `;` 도 막히지만, 판별을 단순하게 두고 나눠 실행하게 한다.
+function chainOperator(command: string, shell: Shell): string | null {
+  const text = command.replace(HEREDOC, '')
+  const escape = shell === 'powershell' ? '`' : '\\'
+  let quote: string | null = null
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (quote) {
+      if (c === escape && quote === '"') i++
+      else if (c === quote) quote = null
+      continue
+    }
+    if (c === escape) {
+      i++
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      continue
+    }
+    if (c === ';') return ';'
+    const pair = text.slice(i, i + 2)
+    if (pair === '&&' || pair === '||') return pair
+  }
+  return null
+}
+
 export function hasBypass(command: string, shell: Shell): boolean {
   return tokenize(command, shell).comments.some(c => BYPASS.test(c.trim()))
 }
 
-export function judge(command: string, shell: Shell, background: boolean): Verdict | null {
+// 파일 작업과 대기 판정이 더 구체적인 안내를 주므로 체이닝은 마지막에 본다.
+export function judge(command: string, shell: Shell, background: boolean, { blockChaining = true }: JudgeOptions = {}): Verdict | null {
   if (!command.trim() || hasBypass(command, shell)) return null
-  return dedicatedToolVerdict(command, shell) ?? timingVerdict(command, shell, background)
+  const verdict = dedicatedToolVerdict(command, shell) ?? timingVerdict(command, shell, background)
+  if (verdict || !blockChaining) return verdict
+  const op = chainOperator(command, shell)
+  return op ? { kind: 'chain', detail: op } : null
 }
 
 const GUIDANCE: Record<Kind, string[]> = {
@@ -372,6 +408,10 @@ const GUIDANCE: Record<Kind, string[]> = {
   watch: [
     'This command starts a long-running process (dev server, --watch, --reload) in the foreground, which never returns.',
     '- Rerun it with `run_in_background: true`, then use `Monitor` on its output (or read the output file) to see when it is ready.',
+  ],
+  chain: [
+    'This command chains commands with `&&`, `||` or `;` outside quotes.',
+    '- Run each command in its own tool call, and send independent ones in parallel in one message. Instead of `cd dir && cmd`, use absolute paths, `git -C <dir>`, or the `cwd` of mcp__j-cc__exec. Make file changes with Edit/Write, then run the command in the next call. For a loop or a multi-step script, `Write` it to the scratchpad and run that file.',
   ],
 }
 

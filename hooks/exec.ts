@@ -1,5 +1,5 @@
 import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register } from 'claude-code'
-import { hasBypass, judge, reason } from './rules'
+import { hasBypass, judge, reason, type JudgeOptions } from './rules'
 import type { Shell } from './shell'
 
 // Codex 의 exec_command/write_stdin 처럼, 명령을 시작하고 몇 초 안에 중간 출력과 session_id 를 돌려준다.
@@ -166,11 +166,15 @@ async function stopRun($: EngineInterface, run: Run, signal: AbortSignal): Promi
 }
 
 // session.start 훅은 모듈에 하나만 둘 수 있어, register 의 session.start 에서 부른다.
-export async function registerExecTools($: EngineInterface): Promise<void> {
+const CMD_DESCRIPTION = 'The command to run.'
+const CMD_DESCRIPTION_NO_CHAINING =
+  'The command to run: one command, since `&&`, `||` and `;` outside quotes are blocked. Use `cwd` instead of `cd dir &&`; put a loop in a scratchpad script and run that file.'
+
+export async function registerExecTools($: EngineInterface, { blockChaining = true }: { blockChaining?: boolean } = {}): Promise<void> {
   const execSchema = {
     type: 'object',
     properties: {
-      cmd: { type: 'string', description: 'The command to run.' },
+      cmd: { type: 'string', description: blockChaining ? CMD_DESCRIPTION_NO_CHAINING : CMD_DESCRIPTION },
       shell: { type: 'string', enum: ['bash', 'powershell'], description: 'bash (Git Bash on Windows, the default) or powershell (pwsh).' },
       cwd: { type: 'string', description: "Working directory; the session's when omitted." },
       yield_time_ms: { type: 'number', description: `How long to wait before returning; default ${DEFAULT_YIELD_MS}, at most ${MAX_YIELD_MS}.` },
@@ -193,7 +197,7 @@ export async function registerExecTools($: EngineInterface): Promise<void> {
 
 type On = Parameters<Register>[0]
 
-export function registerExec(on: On): void {
+export function registerExec(on: On, judgeOptions: JudgeOptions = {}): void {
   // exec 은 셸 명령을 그대로 돌리므로, exec 자체를 따로 허락받지 않고 같은 명령의 Bash/PowerShell 판정을 따른다.
   on('tool.check', { tool: EXEC_TOOL }, async ($, e, next) => {
     const own = await next(e)
@@ -215,7 +219,7 @@ export function registerExec(on: On): void {
     if (!command.trim()) return { deny: 'cmd is required.' }
     const shell = shellOf(args)
     // exec 은 기다리지 않고 돌아오므로 백그라운드 실행처럼 판정한다. 파일 보기·검색·수정과 끝없는 루프는 그대로 막는다.
-    const verdict = hasBypass(command, shell) ? null : judge(command, shell, true)
+    const verdict = hasBypass(command, shell) ? null : judge(command, shell, true, judgeOptions)
     if (verdict) return { deny: reason(verdict) }
 
     const running = [...runs.values()].filter(run => !isDone(run)).length

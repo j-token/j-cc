@@ -12,7 +12,7 @@ import {
 } from './background'
 import { registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
+import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, SUBAGENT_NOTE, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst } from './prompt'
 import { hasBypass, judge, reason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
@@ -132,11 +132,12 @@ function briefer(agentId: string | undefined): (r: ToolCallResult) => ToolCallRe
 
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
+  const judgeOptions = { blockChaining: options.blockChaining !== false }
 
   on('session.start', async ($, e, next) => {
     // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
     if ((await $.env.get('CLAUDE_CODE_THRIFTY_SONIC')) === undefined) await $.env.set('CLAUDE_CODE_THRIFTY_SONIC', '0')
-    await registerExecTools($)
+    await registerExecTools($, judgeOptions)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -160,7 +161,7 @@ export const register: Register = (on, options) => {
     if (hasBypass(e.command, shell)) return brief(await next(e))
     const background = e.run_in_background === true
     // 결정적 차단은 어떤 $ 호출보다 먼저 정한다. 저장소나 모델이 실패해도 차단은 그대로 동작한다.
-    const verdict = judge(e.command, shell, background)
+    const verdict = judge(e.command, shell, background, judgeOptions)
     if (verdict) return brief({ deny: reason(verdict) })
 
     const key = commandKey(e.command, shell)
@@ -195,11 +196,12 @@ export const register: Register = (on, options) => {
     return brief(withNote(r, slowNote(seconds, facts.isMain)))
   }).catch(($, e, next) => next(e))
 
-  registerExec(on)
+  registerExec(on, judgeOptions)
 
+  const shellNotes = judgeOptions.blockChaining ? `${SHELL_TOOL_NOTE} ${CHAIN_NOTE}` : SHELL_TOOL_NOTE
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const r = await next(e)
-    return { ...r, description: `${r.description}\n\n${SHELL_TOOL_NOTE}` }
+    return { ...r, description: `${r.description}\n\n${shellNotes}` }
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {

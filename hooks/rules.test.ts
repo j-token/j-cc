@@ -78,10 +78,41 @@ const CASES: Case[] = [
 
 for (const [tool, command, background, expected] of CASES) {
   test(`${tool}${background ? ' (bg)' : ''}: ${command.slice(0, 60)} -> ${expected ?? 'allow'}`, () => {
+    const verdict = judge(command, tool === 'PowerShell' ? 'powershell' : 'bash', background, { blockChaining: false })
+    expect(verdict?.kind ?? null).toBe(expected)
+  })
+}
+
+const CHAIN_CASES: Case[] = [
+  ['Bash', 'git status && git diff --stat', false, 'chain'],
+  ['Bash', 'cd web; npm test', false, 'chain'],
+  ['Bash', 'npm test || echo failed', false, 'chain'],
+  ['PowerShell', 'Write-Output a; Write-Output b', false, 'chain'],
+  ['Bash', 'for f in *.png; do convert "$f" out.jpg; done', false, 'chain'],
+  ['Bash', 'cat a.ts && cat b.ts', false, 'view'],
+  ['Bash', 'until curl -sf localhost:3000/health; do sleep 1; done', false, 'poll'],
+
+  ['Bash', 'git log --oneline | head -5', false, null],
+  ['Bash', 'echo "a; b && c"', false, null],
+  ['Bash', "git commit -F - <<'EOF'\nfix: a; b && c\nEOF", false, null],
+  ['Bash', 'sleep 10 & echo started', false, null],
+  ['Bash', 'echo a\\;b', false, null],
+  ['PowerShell', 'Write-Output "a;b"', false, null],
+  ['Bash', 'git status && git diff # j-cc:allow: need both in one result', false, null],
+]
+
+for (const [tool, command, background, expected] of CHAIN_CASES) {
+  test(`chaining on, ${tool}: ${command.slice(0, 60)} -> ${expected ?? 'allow'}`, () => {
     const verdict = judge(command, tool === 'PowerShell' ? 'powershell' : 'bash', background)
     expect(verdict?.kind ?? null).toBe(expected)
   })
 }
+
+test('chaining off allows chained commands', () => {
+  const verdict = judge('git status && git diff --stat', 'bash', false, { blockChaining: false })
+
+  expect(verdict).toBe(null)
+})
 
 const AUTO_MODE = `While auto mode is active:
 
@@ -105,6 +136,14 @@ test('denies a misused Bash call through the hook', async ($, on) => {
   expect(JSON.stringify(denied)).toContain('[j-cc] Blocked (search)')
   const allowed = await $.tool.call({ tool: 'Bash', command: 'git status' })
   expect(JSON.stringify(allowed)).not.toContain('[j-cc]')
+})
+
+test('denies a chained Bash call through the hook', async ($, on) => {
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+
+  const denied = await $.tool.call({ tool: 'Bash', command: 'git status && git diff' })
+
+  expect(JSON.stringify(denied)).toContain('[j-cc] Blocked (chain, &&)')
 })
 
 test('appends the routing section to the system prompt', async ($, on) => {

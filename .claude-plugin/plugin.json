@@ -10,6 +10,12 @@
       "title": "Model judge for ambiguous commands",
       "description": "Ask a small model inside Claude Code (no API key) whether a script or loop the rules cannot decide will wait, run endlessly, or take minutes.",
       "default": true
+    },
+    "blockChaining": {
+      "type": "boolean",
+      "title": "Block command chaining",
+      "description": "Block Bash, PowerShell and exec commands that chain with &&, || or ; outside quotes, so each command runs in its own call.",
+      "default": true
     }
   }
 }

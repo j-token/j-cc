@@ -25,12 +25,13 @@ Findings from Claude Code 2.1.301:
 
 | Feature | How |
 |---|---|
-| Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start. The engine reads this variable first, so nothing depends on matching prompt wording. A value you set yourself is left alone. |
+| Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start. The engine reads this variable first, so nothing depends on matching prompt wording. Checked in 2.1.301 and still the same in 2.1.316. A value you set yourself is left alone. |
 | Tool descriptions | Appends dedicated-tool and `run_in_background` guidance to the Bash and PowerShell descriptions. |
 | System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
 | Skill use | The skill listing header and `# User workflow first` both say: before starting a task, compare it with the listed skills and first call the skills whose descriptions cover it; a keyword match alone is not a reason to call one. Listing descriptions are cut to their first sentence and duplicates dropped. |
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. Right after English tool output or a harness notice, Claude tends to write its next short note in English, so every main-session tool result and every notice the harness injects mid-conversation (task completions, messages sent while it works, ...) ends with one sentence: reply in your `language`, or without one, in the language you write in. |
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
+| Command chaining | Denies Bash, PowerShell and exec calls that chain commands with `&&`, `\|\|` or `;` outside quotes and asks for one command per call. Pipes (`\|`), background `&` and heredoc bodies are not checked. The Bash and PowerShell descriptions say so up front, because the stock PowerShell description recommends `cmd1 && cmd2`. Turn it off with `blockChaining`. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
 | Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. A `# Automatic backgrounding (j-cc)` system-prompt section tells Claude about this up front, so it does not run dependent steps before the completion notification. |
 | exec / poll tools | Adds `mcp__j-cc__exec`, which starts a command and returns within 5-8 seconds with the output so far and a `session_id` even while it keeps running, and `mcp__j-cc__poll`, which reads new output or stops it (`terminate: true`), the way Codex's `exec_command`/`write_stdin` do. Nothing to configure: exec follows the Bash/PowerShell permission rules for the same command, poll never asks, j-cc's shell-misuse rules apply, and Git Bash is found on its own (`CLAUDE_CODE_GIT_BASH_PATH` first). |
@@ -52,6 +53,7 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 | Option | Default | Meaning |
 |---|---|---|
 | `modelJudge` | `true` | Judge ambiguous commands with the in-CC model. Off: deterministic rules only. |
+| `blockChaining` | `true` | Deny calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
 
 ## Bypass
 
@@ -68,6 +70,7 @@ j-cc guides the workflow; it is not a security boundary.
 - Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards, tool descriptions, backgrounding and the environment variable still work.
 - `CLAUDE_CODE_THRIFTY_SONIC` is an undocumented experiment switch and may change; the regression toast tells you when it stops working.
 - The rules are approximate. Durations are remembered per command key (`npm test`, `cargo build`, `python train.py`, ...).
+- Chaining detection only tracks quotes, so `;` inside `for …; do …; done` or a PowerShell `{ …; … }` block is denied too; the guidance points to writing such a script to the scratchpad and running the file.
 - exec does not go through settings.json PreToolUse hooks matched on `Bash`/`PowerShell`; only the permission rules and j-cc's guards apply. Each call opens a fresh shell with stdin closed, so interactive prompts do not work.
 
 ## Development

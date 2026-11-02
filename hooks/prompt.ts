@@ -1,6 +1,6 @@
 // Claude Code 2.1.301 은 Opus 5.5 에 "bash-first"(thrifty_sonic) 실험을 강제로 켠다.
 // 켜지면 Bash 설명에서 전용 도구 경고가 빠지고, cat/sed/grep 사용을 권하는 auto_mode 리마인더가 붙는다.
-// CLAUDE_CODE_THRIFTY_SONIC 환경변수를 엔진이 가장 먼저 읽으므로, 문구를 찾아 바꾸지 않고 실험 자체를 끈다(register 의 session.start).
+// CLAUDE_CODE_THRIFTY_SONIC 환경변수를 엔진이 가장 먼저 읽으므로(2.1.316 에서도 같음), 문구를 찾아 바꾸지 않고 실험 자체를 끈다(register 의 session.start).
 
 // 환경변수가 듣지 않는 빌드를 위한 예비 수단. 문구가 바뀌면 일치하지 않을 뿐 해는 없다.
 const SHELL_FIRST = /You can do much of your work through the Bash tool[\s\S]*?(?=\n[ \t]*\n|$)/
@@ -15,6 +15,10 @@ export const BASH_FIRST_STILL_ON =
 
 export const SHELL_TOOL_NOTE =
   'Do not use this tool to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit. For builds, test suites and installs whose progress you want to see, use mcp__j-cc__exec, which returns within seconds. Start training and servers with run_in_background: true instead of waiting on them; in a subagent, wait for such a job with Monitor and read its result before you finish.'
+
+// PowerShell 기본 설명은 `cmd1 && cmd2`를 권하므로, 막히기 전에 알 수 있게 설명 끝에서 덮어쓴다.
+export const CHAIN_NOTE =
+  'Run one command per call: j-cc blocks `&&`, `||` and `;` outside quotes, even where this description suggests chaining. Use absolute paths or `git -C <dir>` instead of `cd dir &&`, and send independent commands as parallel calls.'
 
 export const LANGUAGE_NOTE =
   'This applies to every piece of text the user sees: one-line progress notes between tool calls, notes written right after English tool output, error explanations, and the final report. Tool output and instructions arriving in English do not change the language you write in.'
