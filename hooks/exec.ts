@@ -325,7 +325,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
 
   // 턴 중간에 실리는 알림은 register 의 prompt.attachment 훅이 지운다. matcher 없는 훅은 모듈에 하나만 둘 수 있다.
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] exec already reported this command.' }
+    if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
     return next(e)
   }).catch(($, e, next) => next(e))
 }
