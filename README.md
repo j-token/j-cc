@@ -87,6 +87,10 @@ j-cc guides the workflow; it is not a security boundary.
 - exec follows the Bash/PowerShell verdict for the same command. When that verdict is `ask`, or a denial because auto mode's classifier gave no verdict for the Bash check, exec uses the engine's own verdict for exec, so auto mode's classifier decides and an "always allow" choice in default mode is kept. An allow rule for all of exec also runs commands that Bash would have asked about.
 - The Bash call exec makes is not checked for permission again; exec's own check, which follows the Bash/PowerShell verdict, is the only gate. Other plugins' Bash hooks do run on it; whether settings.json PreToolUse hooks matched on `Bash`/`PowerShell` do has not been checked. Each call runs with stdin closed, so interactive prompts do not work.
 
+## Issues
+
+Bug reports and suggestions are welcome as [GitHub issues](https://github.com/j-token/j-cc/issues). Pull requests are not accepted.
+
 ## Development
 
 ```

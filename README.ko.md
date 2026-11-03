@@ -87,6 +87,10 @@ j-cc는 작업 흐름을 돕는 도구이며 보안 경계가 아닙니다.
 - exec의 권한은 같은 명령의 Bash/PowerShell 판정을 따릅니다. 그 판정이 `ask`이거나, auto mode 분류기가 Bash 판정을 내지 않아 거부한 경우이면 엔진이 exec 자체에 내린 판정을 그대로 씁니다. 그래서 auto mode에서는 분류기가 판단하고, 기본 모드에서 "항상 허용"을 고르면 그 규칙이 남습니다. exec 전체를 허용 규칙에 넣으면, Bash였다면 물었을 명령도 묻지 않고 실행됩니다.
 - exec가 부르는 Bash 호출은 권한을 다시 확인하지 않습니다. 같은 명령의 Bash/PowerShell 판정을 따르는 exec 자신의 확인이 유일한 관문입니다. 다른 플러그인의 Bash 훅은 이 호출에도 적용됩니다. settings.json의 `Bash`/`PowerShell` PreToolUse 훅이 적용되는지는 확인하지 않았습니다. stdin이 닫힌 채 실행하므로 대화형 프롬프트는 쓸 수 없습니다.
 
+## 이슈
+
+버그 제보와 제안은 [GitHub 이슈](https://github.com/j-token/j-cc/issues)로 받습니다. PR은 받지 않습니다.
+
 ## 개발
 
 ```
