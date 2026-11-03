@@ -1,4 +1,5 @@
-const MIN_LATIN_LETTERS = 20
+// 말투가 바뀌는 건 도구 호출 사이의 짧은 메모("Checking the tests now.")부터라 낮게 둔다. "Done." 같은 한 단어는 넘긴다.
+const MIN_LATIN_LETTERS = 8
 const MIN_LATIN_SHARE = 0.9
 
 // 코드, URL, 경로는 어느 언어로 쓴 글에도 영어로 들어가므로 판정에서 뺀다.

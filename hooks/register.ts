@@ -106,6 +106,8 @@ async function configuredLanguage($: EngineInterface): Promise<unknown> {
 
 // 직전 응답 중 설정 언어가 아닐 수 있어 모델에게 물어볼 텍스트. 다음 메인 루프 도구 호출이 가져간다.
 let suspectAnswer: string | null = null
+// 턴을 끝낸 답변 뒤에는 도구 결과가 없어, 판정한 언어를 다음 프롬프트의 맥락으로 넘긴다.
+let driftAtTurnEnd: string | null = null
 
 // language 설정은 자유 형식이라 해석을 모델에 맡긴다. 실패가 밖으로 새면 훅의 catch 가 도구를 한 번 더 실행하므로 삼킨다.
 async function driftedFrom($: EngineInterface, answer: string): Promise<string | null> {
@@ -114,6 +116,13 @@ async function driftedFrom($: EngineInterface, answer: string): Promise<string |
   const target = language.trim()
   const label = await $.model.classify(answer, [inLanguageLabel(target), OTHER_LANGUAGE_LABEL]).catch(() => undefined)
   return label === OTHER_LANGUAGE_LABEL ? target : null
+}
+
+function toastDrift($: EngineInterface): (language: string | null) => string | null {
+  return language => {
+    if (language) $.ui.toast(driftToast(language))
+    return language
+  }
 }
 
 // 대화 맨 앞에 한 번 실리는 목록과 맥락은 사용자에게 쓰는 응답 바로 앞에 오지 않으므로 언어 문장을 붙이지 않는다.
@@ -187,13 +196,30 @@ export const register: Register = (on, options) => {
     // 병렬 도구 호출 중 하나에만 경고가 붙도록 먼저 꺼내 비운다. 판정은 도구 실행과 겹쳐 돌린다.
     const suspect = suspectAnswer
     suspectAnswer = null
-    const drift = suspect === null ? Promise.resolve(null) : driftedFrom($, suspect)
+    // 모델은 이 스텝의 도구 결과가 모두 돌아온 뒤에야 경고를 읽지만, 사용자에게는 판정이 나오는 대로 알린다.
+    const drift = suspect === null ? Promise.resolve(null) : driftedFrom($, suspect).then(toastDrift($))
     const r = await next(e)
     const language = await drift
-    if (language) $.ui.toast(driftToast(language))
     if (r.deny !== undefined) return language ? { deny: `${r.deny}\n\n${driftWarning(language)}` } : r
     const notes = [replyLanguageNote(await configuredLanguage($)), ...(language ? [driftWarning(language)] : [])]
     return { ...r, context: [...(r.context ?? []), ...notes] }
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', async ($, e, next) => {
+    const r = await next(e)
+    if (e.agentId !== undefined) return r
+    suspectAnswer = null
+    if (useModel && mayBeEnglish(e.answer)) driftAtTurnEnd = await driftedFrom($, e.answer).then(toastDrift($))
+    return r
+  }).catch(($, e, next) => next(e))
+
+  // exec 이 이미 보고한 작업의 알림도 여기서 버린다. matcher 없는 prompt.submit 훅은 모듈에 하나만 둘 수 있다.
+  on('prompt.submit', async ($, e, next) => {
+    noteActivity()
+    if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
+    const language = driftAtTurnEnd
+    driftAtTurnEnd = null
+    return next(language ? { ...e, context: [...(e.context ?? []), driftWarning(language)] } : e)
   }).catch(($, e, next) => next(e))
 
   on('prompt.attachment', async ($, e, next) => {

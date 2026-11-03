@@ -12,6 +12,9 @@ test('영문자가 대부분인 산문만 영어일 수 있다고 본다', () =>
   expect(mayBeEnglish(KOREAN_NOTE)).toBe(false)
   expect(mayBeEnglish('결과는 아래와 같습니다.\n```ts\nconst answer = await next(e)\nreturn answer\n```')).toBe(false)
   expect(mayBeEnglish('`C:\\Users\\me\\j-cc\\hooks\\register.ts` https://example.com/some/long/path')).toBe(false)
+  expect(mayBeEnglish('Checking the tests now.')).toBe(true)
+  expect(mayBeEnglish('Read로 다시 확인합니다.')).toBe(false)
+  expect(mayBeEnglish('PowerShell로 확인합니다.')).toBe(false)
   expect(mayBeEnglish('Done.')).toBe(false)
   expect(mayBeEnglish('')).toBe(false)
 })
@@ -53,6 +56,73 @@ test('설정 언어가 아닌 응답 뒤 첫 도구 결과에만 경고를 붙�
   expect(asked).toEqual([ENGLISH_NOTE])
   expect(first).toEndWith(WARNING)
   expect(second).not.toContain('[j-cc]')
+})
+
+async function endTurn($: EngineInterface, answer: string, agentId?: string): Promise<void> {
+  await $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', ...(agentId ? { agentId } : {}) } as never)
+}
+
+function promptEngine(on: On) {
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('prompt.submit', ($, e) => ({ text: e.text, context: e.context, origin: e.origin }))
+}
+
+const submit = ($: EngineInterface) => $.prompt.submit({ text: '다음 작업' } as never)
+
+test('턴을 끝낸 답변이 설정 언어가 아니면 다음 프롬프트에 한 번만 경고를 붙인다', async ($, on) => {
+  const asked = engine(on, KOREAN_NOTE, () => 'written in another language')
+  promptEngine(on)
+
+  await endTurn($, ENGLISH_NOTE)
+  const first = contextOf(await submit($))
+  const second = contextOf(await submit($))
+
+  expect(asked).toEqual([ENGLISH_NOTE])
+  expect(first).toContain(WARNING)
+  expect(second).not.toContain('[j-cc]')
+})
+
+test('턴을 끝낸 답변이 한국어면 묻지 않고 다음 프롬프트에 경고하지 않는다', async ($, on) => {
+  const asked = engine(on, KOREAN_NOTE, () => 'written in another language')
+  promptEngine(on)
+
+  await endTurn($, KOREAN_NOTE)
+  const r = contextOf(await submit($))
+
+  expect(asked).toEqual([])
+  expect(r).not.toContain('[j-cc]')
+})
+
+test('서브에이전트의 턴이 끝날 때는 답변을 검사하지 않는다', async ($, on) => {
+  const asked = engine(on, KOREAN_NOTE, () => 'written in another language')
+  promptEngine(on)
+
+  await endTurn($, ENGLISH_NOTE, 'sub-1')
+  const r = contextOf(await submit($))
+
+  expect(asked).toEqual([])
+  expect(r).not.toContain('[j-cc]')
+})
+
+test('턴 끝에서 판정한 답변은 다음 도구 호출에서 다시 묻지 않는다', async ($, on) => {
+  const asked = engine(on, ENGLISH_NOTE, () => 'written in another language')
+  promptEngine(on)
+
+  await step($)
+  await endTurn($, ENGLISH_NOTE)
+  await $.tool.call({ tool: 'Glob', pattern: '*.ts' } as never)
+
+  expect(asked).toEqual([ENGLISH_NOTE])
+})
+
+test('짧은 영어 메모도 판정해 다음 도구 결과에 경고를 붙인다', async ($, on) => {
+  const asked = engine(on, 'Checking the tests now.', () => 'written in another language')
+
+  await step($)
+  const r = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts' } as never))
+
+  expect(asked).toEqual(['Checking the tests now.'])
+  expect(r).toEndWith(WARNING)
 })
 
 test('모델이 설정 언어로 쓴 글이라고 판정하면 경고하지 않는다', async ($, on) => {

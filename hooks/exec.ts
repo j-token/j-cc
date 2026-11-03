@@ -346,11 +346,4 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     markReported(run)
     return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc poll failed.' }))
-
-  // 턴 중간에 실리는 알림은 register 의 prompt.attachment 훅이 지운다. matcher 없는 훅은 모듈에 하나만 둘 수 있다.
-  on('prompt.submit', async ($, e, next) => {
-    noteActivity()
-    if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
-    return next(e)
-  }).catch(($, e, next) => next(e))
 }
