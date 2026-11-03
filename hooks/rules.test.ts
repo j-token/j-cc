@@ -138,12 +138,14 @@ test('denies a misused Bash call through the hook', async ($, on) => {
   expect(JSON.stringify(allowed)).not.toContain('[j-cc]')
 })
 
-test('denies a chained Bash call through the hook', async ($, on) => {
+test('blockChaining을 켜지 않으면 훅이 이은 명령을 막지 않고 파일 보기는 그대로 막는다', async ($, on) => {
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
 
-  const denied = await $.tool.call({ tool: 'Bash', command: 'git status && git diff' })
+  const chained = await $.tool.call({ tool: 'Bash', command: 'git status && git diff' })
+  const viewing = await $.tool.call({ tool: 'Bash', command: 'cd src && cat a.ts' })
 
-  expect(JSON.stringify(denied)).toContain('[j-cc] Blocked (chain, &&)')
+  expect(JSON.stringify(chained)).not.toContain('[j-cc] Blocked')
+  expect(JSON.stringify(viewing)).toContain('[j-cc] Blocked (view)')
 })
 
 test('appends the routing section to the system prompt', async ($, on) => {

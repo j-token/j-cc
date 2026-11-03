@@ -147,7 +147,8 @@ function briefer(agentId: string | undefined, note: string): (r: ToolCallResult)
 
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
-  const screenOptions = { blockChaining: options.blockChaining !== false, useModel }
+  // 체이닝은 켰을 때만 막는다. 막으면 해가 없는 `node -v; npm -v` 같은 조회도 호출 여러 번으로 쪼개진다.
+  const screenOptions = { blockChaining: options.blockChaining === true, useModel }
   const subagentContext = subagentNote(screenOptions.blockChaining)
 
   // fork 는 부모의 맥락을 그대로 이어받으므로 건드리지 않는다.

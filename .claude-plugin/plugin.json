@@ -14,8 +14,8 @@
     "blockChaining": {
       "type": "boolean",
       "title": "Block command chaining",
-      "description": "Block Bash, PowerShell and exec commands that chain with &&, || or ; outside quotes, so each command runs in its own call.",
-      "default": true
+      "description": "Block Bash, PowerShell and exec commands that chain with &&, || or ; outside quotes, so each command runs in its own call. Off by default: splitting harmless chains costs extra round trips.",
+      "default": false
     }
   }
 }
