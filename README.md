@@ -6,12 +6,6 @@ Harness tuning for Claude models in Claude Code, especially Opus 5.5: use the de
 
 ## Why
 
-Findings from Claude Code 2.1.301:
-
-- Claude Code **forces the "bash-first" experiment (`thrifty_sonic`) on for Opus 5.5 only.** With it on:
-  - the Bash tool description loses its `IMPORTANT` warning to use the dedicated tools instead of find, grep, cat, head and sed;
-  - auto mode adds a reminder saying files can be read with cat/head/sed -n, searched with grep/find and edited with sed or heredocs, "The choice is yours".
-- GPT models reached through a proxy are unknown to Claude Code, so the experiment stays off for them, which is why they pick the dedicated tools more often under the same harness.
 - Transcripts from 2026-09-10 to 11-02 (3,581 files; interactive CLI sessions only) compare Opus main sessions with and without j-cc over the same period (from 10-16, when j-cc started). Tasks differ between sessions, so not every gap is j-cc's. Method, the full tables and the paper the changes rest on ([arXiv:2609.00006](https://arxiv.org/html/2609.00006v1)): [docs/harness-engineering-evidence.md](docs/harness-engineering-evidence.md).
 
 | Metric (Opus, main session) | j-cc (38) | No j-cc, since 10-16 (120) |
@@ -27,7 +21,6 @@ Findings from Claude Code 2.1.301:
 
 | Area | What it does |
 |---|---|
-| Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start, unless you set a value yourself. If auto mode's shell-first reminder still shows up, a toast says so and the paragraph is rewritten to point at the dedicated tools. |
 | Files through the dedicated tools | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. A wrongly blocked command can be rerun with a reason comment ([Bypass](#bypass)). |
 | Shell commands go through exec | Foreground Bash and PowerShell calls are denied with a pointer to `mcp__j-cc__exec`. exec hands the command to Bash or PowerShell as a background task and returns when it exits or after `yield_time_ms` (default 10s, at most 30s) with the output so far. A command still running keeps going, and a notification arrives when it exits. `mcp__j-cc__poll` waits for more output (at most 5 minutes) or stops the task (`terminate: true`). A poll sent with nothing else done since the last report is refused, and at most 16 commands run at once. Bash and PowerShell with `run_in_background: true` still run. |
 | Commands that never end | Denies following a stream (`tail -f`, `watch`, `logs -f`, ...), endless loops, and loops that sleep a minute or more per iteration, pointing to Monitor, `/loop` and `CronCreate`. A Bash or PowerShell `run_in_background` command the rules cannot decide, with loop, wait or server signals, is classified by the in-CC model (Haiku) and denied when judged `endless` (`modelJudge`). In a subagent without exec, foreground dev servers, polling loops and sleeps of 5 seconds or more are denied too. |
@@ -71,8 +64,7 @@ j-cc guides the workflow; it is not a security boundary.
 
 ## Limits
 
-- Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards, tool descriptions and the environment variable still work.
-- `CLAUDE_CODE_THRIFTY_SONIC` is an undocumented experiment switch and may change; the regression toast tells you when it stops working.
+- Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards and tool descriptions still work.
 - The rules are approximate.
 - Whether a subagent has exec is read from its definition file (`.claude/agents/<name>.md` in the project, then `~/.claude/agents/`). A plugin's agent is assumed to have it.
 - exec runs commands through the Bash tool, so the sandbox applies when it is on. That has not been checked with the sandbox actually on: on Windows it is behind a feature flag in 2.1.316. In a subagent, and wherever Claude Code limits background time, a task still running at that limit (10 minutes by default) is stopped, as for Bash `run_in_background`.

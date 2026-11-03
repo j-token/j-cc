@@ -1,5 +1,4 @@
 import { expect, test } from 'claude-code/testing'
-import { hasShellFirst, rewriteShellFirst } from './prompt'
 import { judge, reason } from './rules'
 
 type Case = [tool: 'Bash' | 'PowerShell', command: string, background: boolean, expected: string | null]
@@ -126,22 +125,6 @@ test('chaining off allows chained commands', () => {
   const verdict = judge('git status && git diff --stat', 'bash', false, { blockChaining: false })
 
   expect(verdict).toBe(null)
-})
-
-const AUTO_MODE = `While auto mode is active:
-
-You can do much of your work through the Bash tool when it is the simpler route: read files with cat, head, or sed -n, search with grep and find, and make small, mechanical file changes with sed, heredocs, or short scripts instead of the dedicated Read, Edit, or Write tools. The choice is yours: prefer Edit or Write when a shell edit would be fragile.
-
-Keep going.`
-
-test('rewrites the shell-first auto mode paragraph only', () => {
-  expect(hasShellFirst(AUTO_MODE)).toBe(true)
-  const out = rewriteShellFirst(AUTO_MODE)
-  expect(out.includes('through the Bash tool')).toBe(false)
-  expect(out.includes('Read to view')).toBe(true)
-  expect(out.startsWith('While auto mode is active:')).toBe(true)
-  expect(out.endsWith('Keep going.')).toBe(true)
-  expect(hasShellFirst(out)).toBe(false)
 })
 
 test('denies a misused Bash call through the hook', async ($, on) => {

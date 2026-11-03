@@ -1,7 +1,7 @@
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import { EXEC_TOOL, POLL_TOOL, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst, subagentNote } from './prompt'
+import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
 import { reason, type Verdict } from './rules'
@@ -18,8 +18,6 @@ import {
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
-
-let warnedBashFirst = false
 
 async function gatherEvidence($: EngineInterface, command: string, shell: Shell): Promise<Evidence> {
   const sources: Evidence['sources'] = []
@@ -180,8 +178,6 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('session.start', async ($, e, next) => {
-    // 사용자가 직접 정한 값은 존중한다. 실험을 다시 켜 보고 싶은 사람도 있다.
-    if ((await $.env.get('CLAUDE_CODE_THRIFTY_SONIC')) === undefined) await $.env.set('CLAUDE_CODE_THRIFTY_SONIC', '0')
     await registerExecTools($, screenOptions)
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -289,16 +285,6 @@ export const register: Register = (on, options) => {
   }
 
   on('prompt.attachment', { type: 'total_tokens_reminder' }, () => ({ text: null })).catch(($, e, next) => next(e))
-
-  on('prompt.attachment', { type: 'auto_mode' }, async ($, e, next) => {
-    const r = await next(e)
-    if (!r.text || !hasShellFirst(r.text)) return r
-    if (!warnedBashFirst) {
-      warnedBashFirst = true
-      $.ui.toast(BASH_FIRST_STILL_ON)
-    }
-    return { ...r, text: rewriteShellFirst(r.text) }
-  }).catch(($, e, next) => next(e))
 
   on('prompt.attachment', { type: 'language' }, async ($, e, next) => {
     const r = await next(e)

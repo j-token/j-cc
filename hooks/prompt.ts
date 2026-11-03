@@ -1,18 +1,3 @@
-// Claude Code 2.1.301 은 Opus 5.5 에 "bash-first"(thrifty_sonic) 실험을 강제로 켠다.
-// 켜지면 Bash 설명에서 전용 도구 경고가 빠지고, cat/sed/grep 사용을 권하는 auto_mode 리마인더가 붙는다.
-// CLAUDE_CODE_THRIFTY_SONIC 환경변수를 엔진이 가장 먼저 읽으므로(2.1.316 에서도 같음), 문구를 찾아 바꾸지 않고 실험 자체를 끈다(register 의 session.start).
-
-// 환경변수가 듣지 않는 빌드를 위한 예비 수단. 문구가 바뀌면 일치하지 않을 뿐 해는 없다.
-const SHELL_FIRST = /You can do much of your work through the Bash tool[\s\S]*?(?=\n[ \t]*\n|$)/
-const TOOLS_FIRST =
-  'Use the dedicated tools for files: Read to view, Grep and Glob to search, Edit and Write to change. Use the shell for running programs, builds, tests, git and package managers.'
-
-export const hasShellFirst = (text: string) => SHELL_FIRST.test(text)
-export const rewriteShellFirst = (text: string) => text.replace(SHELL_FIRST, TOOLS_FIRST)
-
-export const BASH_FIRST_STILL_ON =
-  'j-cc: Claude Code still sends the bash-first auto mode reminder; CLAUDE_CODE_THRIFTY_SONIC may no longer work on this build.'
-
 export const SHELL_TOOL_NOTE =
   'j-cc blocks foreground calls of this tool: run commands with mcp__j-cc__exec (shell: "bash" or "powershell"), which returns within 30s with the output, or moves the command to the background and notifies you when it exits. This tool still runs with run_in_background: true. Do not use the shell to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit.'
 

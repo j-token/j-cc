@@ -6,12 +6,6 @@ Claude Code에서 Claude 모델(특히 Opus 5.5)이 **전용 도구를 쓰고, �
 
 ## 왜 필요한가
 
-Claude Code 2.1.301을 조사한 결과 다음 사실을 확인했습니다.
-
-- Claude Code는 **Opus 5.5에만 "bash-first" 실험(`thrifty_sonic`)을 강제로 켭니다.** 이 실험이 켜지면 두 가지가 바뀝니다.
-  - Bash 도구 설명에서 "find, grep, cat, head, sed 대신 전용 도구를 쓰라"는 `IMPORTANT` 경고가 빠집니다.
-  - auto mode에서 "cat, head, sed -n으로 읽고 grep, find로 검색하고 sed나 heredoc으로 고쳐도 된다. 선택은 너에게 있다(The choice is yours)"는 리마인더가 붙습니다.
-- 프록시로 연결한 GPT 모델은 Claude Code가 모르는 모델이라 이 실험이 꺼져 있습니다. 그래서 같은 하네스에서도 GPT 모델이 전용 도구를 더 잘 씁니다.
 - 2026-09-10 ~ 11-02의 세션 기록 3,581개(대화형 CLI 세션만)에서, j-cc를 쓰기 시작한 10월 16일 이후 Opus 메인 세션을 j-cc 사용 여부로 나눠 비교했습니다. 세션마다 작업이 달라서 차이를 모두 j-cc 효과로 볼 수는 없습니다. 조사 방법, 전체 표, 변경의 근거로 삼은 논문([arXiv:2609.00006](https://arxiv.org/html/2609.00006v1))은 [docs/harness-engineering-evidence.md](docs/harness-engineering-evidence.md)에 있습니다.
 
 | 지표 (Opus, 메인 세션) | j-cc (38) | 미사용, 10/16 이후 (120) |
@@ -27,7 +21,6 @@ Claude Code 2.1.301을 조사한 결과 다음 사실을 확인했습니다.
 
 | 영역 | 내용 |
 |---|---|
-| bash-first 실험 끄기 | 세션을 시작할 때 `CLAUDE_CODE_THRIFTY_SONIC=0`을 설정합니다. 사용자가 이미 값을 정했으면 그대로 둡니다. 그래도 auto mode의 셸 우선 리마인더가 나오면 토스트로 알리고, 그 문단을 전용 도구 안내로 바꿉니다. |
 | 파일은 전용 도구로 | 셸로 파일을 보기·검색·쓰기·수정하는 호출을 막고 Read, Grep, Glob, Write, Edit로 안내합니다. 잘못 막힌 명령은 이유 주석을 붙여 다시 실행할 수 있습니다([우회](#우회)). |
 | 셸 명령은 exec로 | 포그라운드 Bash·PowerShell 호출을 막고 `mcp__j-cc__exec`로 안내합니다. exec는 명령을 Bash·PowerShell 백그라운드 작업으로 넘깁니다. 명령이 끝나거나 `yield_time_ms`(기본 10초, 최대 30초)가 지나면 그때까지 나온 출력을 돌려줍니다. 끝나지 않은 명령은 계속 돌고, 끝나면 완료 알림이 옵니다. `mcp__j-cc__poll`은 출력을 더 기다리거나(최대 5분) `terminate: true`로 작업을 멈춥니다. 직전 보고 뒤로 아무 일도 하지 않고 부른 poll은 거절합니다. 동시에 돌릴 수 있는 명령은 16개까지입니다. `run_in_background: true`인 Bash·PowerShell은 그대로 실행합니다. |
 | 끝나지 않는 명령 차단 | `tail -f`, `watch`, `logs -f` 같은 스트림 따라가기, 무한 루프, 반복마다 1분 이상 쉬는 루프를 막고 Monitor, `/loop`, `CronCreate`로 안내합니다. Bash·PowerShell의 `run_in_background` 명령 중 규칙으로 판단하지 못했고 루프·대기·서버 단서가 있는 명령은 CC 내부 모델(Haiku)이 판정합니다. `endless`로 판정하면 막습니다(`modelJudge`). exec가 없는 서브에이전트의 포그라운드 셸에서는 dev 서버, 폴링 루프, 5초 이상 대기도 막습니다. |
@@ -71,8 +64,7 @@ j-cc는 작업 흐름을 돕는 도구이며 보안 경계가 아닙니다.
 
 ## 제한
 
-- 조직이 관리하는 Claude Code에서는 `prompt.attachment`와 `prompt.compose` 훅이 사용자가 설치한 플러그인에서 실행되지 않습니다. 이 경우 셸 차단, 도구 설명 보강, 환경변수 설정만 동작합니다.
-- `CLAUDE_CODE_THRIFTY_SONIC`은 비공개 실험 변수라 이후 빌드에서 바뀔 수 있습니다. 그런 일이 생기면 회귀 감지 토스트가 알려 줍니다.
+- 조직이 관리하는 Claude Code에서는 `prompt.attachment`와 `prompt.compose` 훅이 사용자가 설치한 플러그인에서 실행되지 않습니다. 이 경우 셸 차단과 도구 설명 보강만 동작합니다.
 - 규칙은 근사 판단입니다.
 - 서브에이전트에 exec가 있는지는 정의 파일에서 읽습니다. 프로젝트의 `.claude/agents/<이름>.md`를 먼저 보고, 없으면 `~/.claude/agents/`를 봅니다. 플러그인 에이전트는 exec가 있다고 봅니다.
 - exec는 Bash 도구로 명령을 실행하므로, 샌드박스를 켜면 샌드박스가 적용됩니다. 다만 실제로 샌드박스를 켠 상태에서는 확인하지 않았습니다. 2.1.316의 Windows 샌드박스는 기능 플래그 뒤에 있습니다. 서브에이전트처럼 Claude Code가 백그라운드 시간을 제한하는 곳에서는, 그 한도(기본 10분)까지 끝나지 않은 작업이 Bash `run_in_background`와 똑같이 멈춥니다.
