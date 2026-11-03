@@ -33,11 +33,17 @@ export type Run = {
   taskId: string
   outputPath: string
   reportedChars: number
+  reportedAtActivity?: number
   exit?: TaskExit
   failure?: string
 }
 
 const runs = new Map<number, Run>()
+// 메인 루프에서 poll 이 아닌 도구 호출과 사용자 입력을 센다. exec·poll 이 돌려준 뒤 이 값이 그대로면 그사이 모델이 한 일이 없다.
+let activity = 0
+export const noteActivity = () => {
+  activity++
+}
 // 종료까지 보고한 작업. 엔진이 뒤늦게 보내는 완료 알림은 같은 내용이라 지운다.
 const reportedTasks = new Set<string>()
 let nextRunId = 1
@@ -91,6 +97,19 @@ export function takeReport(run: Run, fileText: string, nowMs: number, maxOutputC
     rememberReported(run.taskId)
   }
   return `${statusLine(run, nowMs)}\nOutput:\n${clip(fresh, maxChars)}`
+}
+
+// exec 이 백그라운드로 넘긴 직후 다른 일 없이 부른 poll 은 최대 5분 동안 메인 루프를 세운다. 끝나면 알림이 오므로 기다릴 이유가 없다.
+// 서브에이전트는 결과를 받기 전에 끝나면 안 되므로 poll 로 기다리게 둔다.
+export const IDLE_POLL_DENIAL =
+  '[j-cc] Not polled: nothing else happened since exec or poll last reported this command. It keeps running and you are notified when it exits. Do independent work now, or end your turn if nothing is left; poll later only if you need its output before the notice. terminate: true still works.'
+
+export function markReported(run: Pick<Run, 'reportedAtActivity'>): void {
+  run.reportedAtActivity = activity
+}
+
+export function isIdlePoll(run: Pick<Run, 'reportedAtActivity'>, agentId: string | undefined): boolean {
+  return agentId === undefined && run.reportedAtActivity === activity
 }
 
 export function yieldMs(requested: unknown, maxMs: number): number {
@@ -153,7 +172,7 @@ export const EXEC_DESCRIPTION = [
   'The same permission rules and sandbox as the Bash and PowerShell tools apply.',
 ].join(' ')
 
-export const POLL_DESCRIPTION = `Wait for new output from a command exec left running, up to yield_time_ms (default ${DEFAULT_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}); it returns as soon as the command exits. terminate: true stops it. Omit session_id to list running commands.`
+export const POLL_DESCRIPTION = `Wait for new output from a command exec left running, up to yield_time_ms (default ${DEFAULT_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}); it returns as soon as the command exits. It refuses a poll sent with no other tool call since exec or poll last reported that command. terminate: true stops it. Omit session_id to list running commands.`
 
 type ExecArgs = { cmd?: unknown; shell?: unknown; cwd?: unknown; yield_time_ms?: unknown; max_output_chars?: unknown }
 type PollArgs = { session_id?: unknown; yield_time_ms?: unknown; terminate?: unknown; max_output_chars?: unknown }
@@ -303,6 +322,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const run: Run = { id: nextRunId++, command, startedAtMs, ...task, reportedChars: 0 }
     runs.set(run.id, run)
     const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), next.budget.remainingMs, next.signal)
+    markReported(run)
     return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc exec failed before the command started.' }))
 
@@ -321,12 +341,15 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
       if (!parseTaskOutput(text).exit) run.failure = 'terminated by poll'
       return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
     }
+    if (isIdlePoll(run, (e as { agentId?: string }).agentId)) return { deny: IDLE_POLL_DENIAL }
     const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_POLL_YIELD_MS), next.budget.remainingMs, next.signal)
+    markReported(run)
     return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc poll failed.' }))
 
   // 턴 중간에 실리는 알림은 register 의 prompt.attachment 훅이 지운다. matcher 없는 훅은 모듈에 하나만 둘 수 있다.
   on('prompt.submit', async ($, e, next) => {
+    noteActivity()
     if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
     return next(e)
   }).catch(($, e, next) => next(e))

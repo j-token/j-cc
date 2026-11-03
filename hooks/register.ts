@@ -1,5 +1,5 @@
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
-import { EXEC_TOOL, isReportedTaskNotice, registerExec, registerExecTools } from './exec'
+import { EXEC_TOOL, POLL_TOOL, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
@@ -183,6 +183,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e)
+    if (e.tool !== POLL_TOOL) noteActivity()
     // 병렬 도구 호출 중 하나에만 경고가 붙도록 먼저 꺼내 비운다. 판정은 도구 실행과 겹쳐 돌린다.
     const suspect = suspectAnswer
     suspectAnswer = null

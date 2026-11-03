@@ -6,8 +6,11 @@ import {
   POLL_TOOL,
   budgetedYieldMs,
   clip,
+  isIdlePoll,
   isReportedTaskNotice,
   launchedTask,
+  markReported,
+  noteActivity,
   noticeTaskId,
   parseTaskOutput,
   passedPermission,
@@ -147,6 +150,16 @@ test('권한을 통과해 처리기를 찾지 못한 결과일 때만 명령을 
   expect(passedPermission({ isError: true, text: refused })).toBe(false)
   expect(passedPermission({ deny: 'blocked' })).toBe(false)
   expect(passedPermission({ text: 'ok' })).toBe(false)
+})
+
+test('메인 루프가 보고 뒤 다른 일 없이 부른 poll만 쉬는 poll로 본다', () => {
+  const run = fakeRun({})
+  markReported(run)
+
+  expect(isIdlePoll(run, undefined)).toBe(true)
+  expect(isIdlePoll(run, 'agent-1')).toBe(false)
+  noteActivity()
+  expect(isIdlePoll(run, undefined)).toBe(false)
 })
 
 test('poll은 session_id 없이 부르면 실행 중인 명령이 없다고 알린다', async $ => {
