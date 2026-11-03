@@ -28,18 +28,18 @@ Findings from Claude Code 2.1.301:
 | Feature | How |
 |---|---|
 | Turn bash-first off | Sets `CLAUDE_CODE_THRIFTY_SONIC=0` at session start. The engine reads this variable first, so nothing depends on matching prompt wording. Checked in 2.1.301 and still the same in 2.1.316. A value you set yourself is left alone. |
-| Tool descriptions | Appends dedicated-tool and `run_in_background` guidance to the Bash and PowerShell descriptions. |
+| Tool descriptions | Appends to the Bash and PowerShell descriptions that foreground calls are blocked in favor of exec, that they are for `run_in_background` jobs only, and that files go through the dedicated tools. PowerShell is deferred behind ToolSearch, since Bash covers background jobs. Monitor is loaded up front instead of behind ToolSearch, so following a log does not turn into re-reading it from the shell. |
 | System prompt | Adds `# User workflow first` (CLAUDE.md wins, check skills first, run the narrowest check before reporting a code change as done or say it was not run) and `# Tool routing` sections. When a needed tool is not loaded, it tells Claude to search with ToolSearch before falling back to the shell. |
 | Skill use | The skill listing header and `# User workflow first` both say: before starting a task, compare it with the listed skills and first call the skills whose descriptions cover it; a keyword match alone is not a reason to call one. Listing descriptions are cut to their first sentence and duplicates dropped. |
 | Progress-note language | Extends the `language` instruction to cover the short notes between tool calls. Right after English tool output or a harness notice, Claude tends to write its next short note in English, so every main-session tool result and every notice the harness injects mid-conversation (task completions, messages sent while it works, ...) ends with one sentence: reply in your `language`, or without one, in the language you write in. |
 | Reply-language drift check | With `language` set, a main-session reply whose letters are almost all ASCII (code, paths and URLs left out, 20 letters or more) goes to the in-CC small model, which says whether it is written in your `language`. The setting is free-form, so the model reads it. When it is not, the next tool result carries a warning that the last note was off-language, and a toast says so. The check runs alongside the tool, so it adds almost no wait; when it fails, no warning. A final answer with no tool calls is flagged at the next turn's first tool result. Off with `modelJudge`. |
 | Shell misuse | Denies viewing, searching, writing and editing files from the shell and points to Read, Grep, Glob, Write and Edit. |
-| Command chaining | Denies Bash, PowerShell and exec calls that chain commands with `&&`, `\|\|` or `;` outside quotes and asks for one command per call. Pipes (`\|`), background `&` and heredoc bodies are not checked. The Bash and PowerShell descriptions say so up front, because the stock PowerShell description recommends `cmd1 && cmd2`. Turn it off with `blockChaining`. |
+| Command chaining | Off by default. Chained commands run as one call; file viewing, searching and editing inside a chain are still denied. With `blockChaining` on, j-cc denies Bash, PowerShell and exec calls that chain with `&&`, `\|\|` or `;` outside quotes (pipes, background `&` and heredoc bodies are not checked), and the Bash and PowerShell descriptions say so up front. |
 | Loops and waits | Denies `tail -f`, endless loops, foreground polling and sleeps, and foreground dev servers, pointing to Monitor, `run_in_background`, `/loop` and `CronCreate`. |
-| Long commands to the background | Installs, Docker builds, training/eval scripts, a `timeout` over 120s, and any command that took 45s or more before run with `run_in_background: true`, with a note to keep working instead of waiting. Main session only. A `# Automatic backgrounding (j-cc)` system-prompt section tells Claude about this up front, so it does not run dependent steps before the completion notification. |
-| exec / poll tools | Adds `mcp__j-cc__exec`, which starts a command and returns within 5-8 seconds with the output so far and a `session_id` even while it keeps running, and `mcp__j-cc__poll`, which reads new output or stops it (`terminate: true`), the way Codex's `exec_command`/`write_stdin` do. Nothing to configure: exec follows the Bash/PowerShell permission rules for the same command, poll never asks, j-cc's shell-misuse rules apply, and Git Bash is found on its own (`CLAUDE_CODE_GIT_BASH_PATH` first). |
-| Subagent context | When a subagent starts, its task prompt ends with j-cc's rules for it: files go through Read, Grep, Glob, Edit and Write (shell file commands are blocked), one shell command per call when `blockChaining` is on, and, since subagents are never auto-backgrounded, run what you need in the foreground and wait with Monitor for anything you background. Forks inherit the parent's context and are left alone; a subagent that did not get the rules at start gets them once on its first shell result. The slow-command note differs for main and subagents too. |
-| In-CC model judge | Commands the rules cannot decide are classified by Claude Code's own `$.model` (Haiku), only when the command or the script it runs shows loop, wait or server signals, and cached per command: `quick`, `long_job`, `wait_poll`, `endless`, `server`. |
+| Shell commands go through exec | Foreground Bash and PowerShell calls are denied with a pointer to `mcp__j-cc__exec` (`shell: "bash"` or `"powershell"`). A foreground shell call returns nothing until it ends, so a command stuck on an unclosed heredoc or a prompt held Claude until its timeout; exec always comes back within 30 seconds. A command still running then stays in the background, and Claude Code notifies Claude when it exits, so Claude goes on with other work instead of waiting. Bash and PowerShell with `run_in_background: true` still run. A `# Shell commands (j-cc)` system-prompt section says this up front. Applies to subagents too, except one whose definition lists its tools with `tools:` and leaves exec out. |
+| exec / poll tools | `mcp__j-cc__exec` hands the command to Claude Code's own Bash or PowerShell tool as a background task, so the sandbox, the task list and the completion notification are the same as Bash's. It returns when the command exits or after `yield_time_ms` (default 10s, at most 30s) with the output so far and a `session_id`. `mcp__j-cc__poll` waits for new output (at most 5 minutes per call) or stops the task (`terminate: true`), the way Codex's `exec_command`/`write_stdin` do. When exec or poll has already reported a task's exit, its completion notification is dropped as a duplicate. A hook has a 10-second budget, and waiting on a task counts against it, so exec and poll wait while reading a small tick process they start themselves, which does not count. Nothing to configure: exec follows the Bash/PowerShell permission rules for the same command, poll never asks, j-cc's shell-misuse rules apply, and Git Bash is found on its own (`CLAUDE_CODE_GIT_BASH_PATH` first). |
+| Subagent context | When a subagent starts, its task prompt ends with j-cc's rules for it: files go through Read, Grep, Glob, Edit and Write (shell file commands are blocked), one shell command per call when `blockChaining` is on, run commands with exec and poll until they exit, and wait with Monitor for anything run in the background. Forks inherit the parent's context and are left alone; a subagent that did not get the rules at start gets them once on its first shell result. |
+| In-CC model judge | Background commands the rules cannot decide are classified by Claude Code's own `$.model` (Haiku), only when the command or the script it runs shows loop, wait or server signals, and cached per command; one judged `endless` is denied. |
 | Regression alert | If the shell-first reminder still shows up despite the variable, a toast says so and the paragraph is rewritten as a fallback. |
 
 ## Install
@@ -56,7 +56,7 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 | Option | Default | Meaning |
 |---|---|---|
 | `modelJudge` | `true` | Judge ambiguous commands, bypass reasons and reply-language drift with the in-CC model. Off: deterministic rules only, bypass comments pass unreviewed, and no drift check. |
-| `blockChaining` | `true` | Deny calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
+| `blockChaining` | `false` | Deny calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
 
 ## Bypass
 
@@ -69,19 +69,23 @@ grep -c MAGIC app.exe # j-cc:allow: the Grep tool skips binary files
 When a rule would block the command, the in-CC model (Haiku) reads the rule, the command and the reason and decides whether the shell is really needed.
 - A vague reason, convenience, or a job the suggested tool can do is denied as `Bypass rejected`, with one sentence naming the tool or approach to use instead.
 - Reviews are remembered per command.
-- A comment on a command no rule blocks (for example to stay in the foreground) passes without a review.
+- A comment on a command no rule blocks is not reviewed; the result says the comment was not needed. It does not allow foreground Bash.
 - With `modelJudge` off, or when the model gives no answer, the comment is trusted as before.
 
 j-cc guides the workflow; it is not a security boundary.
 
 ## Limits
 
-- Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards, tool descriptions, backgrounding and the environment variable still work.
+- Where an organization manages Claude Code, `prompt.attachment` and `prompt.compose` hooks do not run in plugins a person installs; the shell guards, tool descriptions and the environment variable still work.
 - `CLAUDE_CODE_THRIFTY_SONIC` is an undocumented experiment switch and may change; the regression toast tells you when it stops working.
-- The rules are approximate. Durations are remembered per command key (`npm test`, `cargo build`, `python train.py`, ...).
-- Chaining detection only tracks quotes, so `;` inside `for …; do …; done` or a PowerShell `{ …; … }` block is denied too; the guidance points to writing such a script to the scratchpad and running the file.
+- The rules are approximate.
+- Whether a subagent has exec is read from its definition file (`.claude/agents/<name>.md` in the project, then `~/.claude/agents/`). A plugin's agent is assumed to have it.
+- exec runs commands through the Bash tool, so the sandbox applies when it is on. That has not been checked with the sandbox actually on: on Windows it is behind a feature flag in 2.1.316. In a subagent, and wherever Claude Code limits background time, a task still running at that limit (10 minutes by default) is stopped, as for Bash `run_in_background`.
+- Pressing Esc while exec or poll is waiting has not been checked in an interactive session.
+- With `blockChaining` on, chaining detection only tracks quotes, so `;` inside `for …; do …; done` or a PowerShell `{ …; … }` block is denied too; the guidance points to writing such a script to the scratchpad and running the file.
+- A chain that mixes a file view with another command (`head f && wc -l f`) passes the file-view rule, which only denies a call made entirely of viewing and searching.
 - exec follows the Bash/PowerShell verdict for the same command. When that verdict is `ask`, exec uses the engine's own verdict for exec, so auto mode's classifier decides and an "always allow" choice in default mode is kept. An allow rule for all of exec also runs commands that Bash would have asked about.
-- exec does not go through settings.json PreToolUse hooks matched on `Bash`/`PowerShell`; only the permission rules and j-cc's guards apply. Each call opens a fresh shell with stdin closed, so interactive prompts do not work.
+- The Bash call exec makes is not checked for permission again; exec's own check, which follows the Bash/PowerShell verdict, is the only gate. Other plugins' Bash hooks do run on it; whether settings.json PreToolUse hooks matched on `Bash`/`PowerShell` do has not been checked. Each call runs with stdin closed, so interactive prompts do not work.
 
 ## Development
 

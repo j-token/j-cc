@@ -1,29 +1,65 @@
 import { expect, test } from 'claude-code/testing'
-import { EXEC_TOOL, MAX_YIELD_MS, POLL_TOOL, appendOutput, clip, passedPermission, statusLine, takeReport, yieldMs, type Run } from './exec'
+import {
+  EXEC_TOOL,
+  MAX_EXEC_YIELD_MS,
+  MAX_POLL_YIELD_MS,
+  POLL_TOOL,
+  budgetedYieldMs,
+  clip,
+  isReportedTaskNotice,
+  launchedTask,
+  noticeTaskId,
+  parseTaskOutput,
+  passedPermission,
+  quoteCwd,
+  statusLine,
+  takeReport,
+  yieldMs,
+  type Run,
+} from './exec'
 
 test('출력이 한도를 넘으면 앞부분 일부와 뒷부분을 남긴다', () => {
   expect(clip('0123456789', 20)).toBe('0123456789')
   expect(clip('0123456789', 4)).toBe('0\n…[6 chars omitted]…\n789')
 })
 
-test('버퍼가 가득 차면 오래된 출력을 버리고 버린 글자 수를 센다', () => {
-  const run = { unread: 'abcdef', droppedChars: 0 }
-
-  appendOutput(run, 'ghij', 8)
-
-  expect(run).toEqual({ unread: 'cdefghij', droppedChars: 2 })
+test('대기 시간은 기본 10초이고 exec 은 30초, poll 은 5분을 넘지 않는다', () => {
+  expect(yieldMs(undefined, MAX_EXEC_YIELD_MS)).toBe(10_000)
+  expect(yieldMs(-1, MAX_EXEC_YIELD_MS)).toBe(10_000)
+  expect(yieldMs(60_000, MAX_EXEC_YIELD_MS)).toBe(30_000)
+  expect(yieldMs(600_000, MAX_POLL_YIELD_MS)).toBe(300_000)
 })
 
-test('대기 시간은 기본 5초이고 8초와 남은 훅 예산을 넘지 않는다', () => {
-  expect(yieldMs(undefined, Infinity)).toBe(5_000)
-  expect(yieldMs(60_000, Infinity)).toBe(MAX_YIELD_MS)
-  expect(yieldMs(5_000, 4_000)).toBe(2_500)
-  expect(yieldMs(-1, 1_000)).toBe(0)
+test('tick 프로세스 없이 기다릴 때는 8초와 남은 훅 예산을 넘지 않는다', () => {
+  expect(budgetedYieldMs(60_000, Infinity)).toBe(8_000)
+  expect(budgetedYieldMs(5_000, 4_000)).toBe(2_500)
+  expect(budgetedYieldMs(5_000, 1_000)).toBe(0)
 })
 
-test('상태 줄은 종료 코드나 이어서 읽을 session_id를 알려 준다', () => {
+test('작업 출력 파일 끝의 종료 표식을 떼어 종료 코드나 멈춘 이유로 읽는다', () => {
+  expect(parseTaskOutput('0\r\n1\r\n')).toEqual({ output: '0\r\n1\r\n' })
+  expect(parseTaskOutput('built\r\n\n[exited with code 2]\n')).toEqual({ output: 'built\r\n', exit: { code: 2, signal: null } })
+  expect(parseTaskOutput('0\r\n14\r\n\n[killed]\n')).toEqual({ output: '0\r\n14\r\n', exit: { code: null, signal: 'killed' } })
+})
+
+test('상태 줄은 종료 코드를, 아직 돌면 백그라운드로 넘어갔고 알림이 온다는 것을 알려 준다', () => {
   expect(statusLine({ id: 3, startedAtMs: 0, exit: { code: 1, signal: null } }, 2_500)).toBe('Process exited with code 1 (wall 2.5s)')
-  expect(statusLine({ id: 3, startedAtMs: 0 }, 1_000)).toContain('Process running with session_id 3 (wall 1.0s)')
+  expect(statusLine({ id: 3, startedAtMs: 0 }, 1_000)).toContain('Process running in the background with session_id 3 (wall 1.0s). You are notified when it exits')
+})
+
+test('Bash 백그라운드 실행 결과에서 작업 ID와 출력 파일 경로를 꺼낸다', () => {
+  const launched = {
+    result: { stdout: '', backgroundTaskId: 'b7ywg0ifx' },
+    text: 'Command running in background with ID: b7ywg0ifx. Output is being written to: C:\\Temp\\tasks\\b7ywg0ifx.output. You will be notified when it completes.',
+  }
+
+  expect(launchedTask(launched)).toEqual({ taskId: 'b7ywg0ifx', outputPath: 'C:\\Temp\\tasks\\b7ywg0ifx.output' })
+  expect(launchedTask({ deny: 'blocked' })).toBe(null)
+})
+
+test('cwd는 셸에 맞게 인용해 명령 앞에 붙인다', () => {
+  expect(quoteCwd('bash', "C:/it's here")).toBe("cd -- 'C:/it'\\''s here' && ")
+  expect(quoteCwd('powershell', "C:\\it's")).toBe("Set-Location -LiteralPath 'C:\\it''s'; ")
 })
 
 test('셸 판정이 ask이면 exec에 대한 엔진 판정을 넘기고, allow와 deny는 셸 판정을 따른다', async ($, on) => {
@@ -54,27 +90,41 @@ const fakeRun = (fields: Partial<Run>): Run => ({
   id: 1,
   command: 'npm run build',
   startedAtMs: 0,
-  unread: '',
-  droppedChars: 0,
-  finished: Promise.resolve(),
-  stream: null as never,
+  taskId: 'task-1',
+  outputPath: 'C:/Temp/tasks/task-1.output',
+  reportedChars: 0,
   ...fields,
 })
 
-test('보고는 읽지 않은 출력을 넘기고 버퍼를 비운다', () => {
-  const run = fakeRun({ unread: 'compiling\n', droppedChars: 5 })
+test('보고는 이미 돌려준 출력을 건너뛰고 새 출력만 넘긴다', () => {
+  const run = fakeRun({})
 
-  const report = takeReport(run, 3_000, undefined)
+  const first = takeReport(run, 'compiling\n', 3_000, undefined)
+  const second = takeReport(run, 'compiling\nlinking\n', 4_000, undefined)
 
-  expect(report).toBe('Process running with session_id 1 (wall 3.0s). Call poll with this session_id to read more output, or with terminate: true to stop it.\nOutput:\n[5 earlier chars dropped from the buffer]\ncompiling\n')
-  expect(run.unread).toBe('')
-  expect(run.droppedChars).toBe(0)
+  expect(first).toEndWith('Output:\ncompiling\n')
+  expect(second).toEndWith('Output:\nlinking\n')
 })
 
 test('끝난 명령의 보고에는 종료 코드와 한도에 맞춘 출력이 들어간다', () => {
-  const run = fakeRun({ unread: 'built\n', exit: { code: 0, signal: null } })
+  const run = fakeRun({})
 
-  expect(takeReport(run, 1_000, 3)).toBe('Process exited with code 0 (wall 1.0s)\nOutput:\n\n…[3 chars omitted]…\nlt\n')
+  expect(takeReport(run, 'built\n\n[exited with code 0]\n', 1_000, 3)).toBe('Process exited with code 0 (wall 1.0s)\nOutput:\n\n…[3 chars omitted]…\nlt\n')
+})
+
+test('완료 알림에서 작업 ID를 읽는다', () => {
+  expect(noticeTaskId('<task-notification>\n<task-id>bc9tb1vsb</task-id>\n<status>completed</status>')).toBe('bc9tb1vsb')
+  expect(noticeTaskId('The user sent a new message.')).toBe(undefined)
+})
+
+test('종료까지 보고한 작업의 알림만 이미 보고한 알림으로 본다', () => {
+  const stillRunning = fakeRun({ taskId: 'running-task' })
+  takeReport(fakeRun({ taskId: 'reported-task' }), 'ok\n\n[exited with code 0]\n', 1_000, undefined)
+  takeReport(stillRunning, 'compiling\n', 1_000, undefined)
+
+  expect(isReportedTaskNotice('<task-notification><task-id>reported-task</task-id></task-notification>')).toBe(true)
+  expect(isReportedTaskNotice('<task-notification><task-id>running-task</task-id></task-notification>')).toBe(false)
+  expect(isReportedTaskNotice('The user sent a new message.')).toBe(false)
 })
 
 test('권한을 통과해 처리기를 찾지 못한 결과일 때만 명령을 실행한다', () => {

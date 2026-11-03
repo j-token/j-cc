@@ -22,13 +22,13 @@ test('parses the label the model answers', () => {
 
 const SCRIPTS: Record<string, string> = {
   'check.py': 'import time\nwhile not ready():\n    time.sleep(10)\n',
-  'serve.py': 'from http.server import HTTPServer\nHTTPServer(("", 8000), H).serve_forever()\n',
+  'monitor.py': 'import time\nwhile True:\n    report()\n    time.sleep(30)\n',
   'report.py': 'print("hi")\n',
 }
 
-test('acts on the model judge for scripts the rules cannot decide', async ($, on) => {
+test('백그라운드 스크립트는 모델이 끝나지 않는다고 판정할 때만 막고, 판정은 저장해 다시 묻지 않는다', async ($, on) => {
   const asked: string[] = []
-  const seen: (boolean | undefined)[] = []
+  const seen: string[] = []
   const store = new Map<string, unknown>()
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
   on('store.set', ($, e) => {
@@ -42,25 +42,21 @@ test('acts on the model judge for scripts the rules cannot decide', async ($, on
   })
   on('model.complete', ($, e) => {
     asked.push(String(e.prompt))
-    const text = String(e.prompt).includes('serve_forever') ? 'server' : 'wait_poll'
+    const text = String(e.prompt).includes('while True') ? 'endless' : 'wait_poll'
     return { value: { isAnswered: true, text, usage: { input_tokens: 1, output_tokens: 1 } } }
   })
   on('tool.call', ($, e) => {
-    if (e.tool === 'Bash') seen.push(e.run_in_background)
+    if (e.tool === 'Bash') seen.push(e.command)
     return { result: { stdout: '', stderr: '', interrupted: false } }
   })
 
-  const poll = await $.tool.call({ tool: 'Bash', command: 'python check.py' })
-  expect(JSON.stringify(poll)).toContain('Blocked (poll, judged wait_poll)')
-  await $.tool.call({ tool: 'Bash', command: 'python check.py' })
-  expect(asked.length).toBe(1)
+  const waitLoop = await $.tool.call({ tool: 'Bash', command: 'python check.py', run_in_background: true })
+  await $.tool.call({ tool: 'Bash', command: 'python check.py', run_in_background: true })
+  const endless = await $.tool.call({ tool: 'Bash', command: 'python monitor.py', run_in_background: true })
+  await $.tool.call({ tool: 'Bash', command: 'python report.py', run_in_background: true })
 
-  const server = await $.tool.call({ tool: 'Bash', command: 'python serve.py' })
-  expect(JSON.stringify(server)).toContain('judged a long-lived server')
-  await $.tool.call({ tool: 'Bash', command: 'python report.py' })
+  expect(JSON.stringify(waitLoop)).not.toContain('[j-cc] Blocked')
+  expect(JSON.stringify(endless)).toContain('Blocked (forever, judged endless)')
+  expect(seen).toEqual(['python check.py', 'python check.py', 'python report.py'])
   expect(asked.length).toBe(2)
-  const bypassed = await $.tool.call({ tool: 'Bash', command: 'python check.py # j-cc:allow: the flag appears in a second' })
-  expect(JSON.stringify(bypassed)).not.toContain('[j-cc]')
-  expect(asked.length).toBe(2)
-  expect(seen).toEqual([true, undefined, undefined])
 })

@@ -134,7 +134,7 @@ test('denies a misused Bash call through the hook', async ($, on) => {
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
   const denied = await $.tool.call({ tool: 'Bash', command: 'grep -rn TODO src' })
   expect(JSON.stringify(denied)).toContain('[j-cc] Blocked (search)')
-  const allowed = await $.tool.call({ tool: 'Bash', command: 'git status' })
+  const allowed = await $.tool.call({ tool: 'Bash', command: 'npm run dev', run_in_background: true })
   expect(JSON.stringify(allowed)).not.toContain('[j-cc]')
 })
 
@@ -167,5 +167,5 @@ test('appends the routing section to the system prompt', async ($, on) => {
     traits: [],
   })
   expect(sections.map(s => s.id)).toContain('j-cc:routing')
-  expect(sections.map(s => s.id)).toContain('j-cc:auto-background')
+  expect(sections.map(s => s.id)).toContain('j-cc:shell-commands')
 })

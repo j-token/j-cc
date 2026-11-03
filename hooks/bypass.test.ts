@@ -7,7 +7,7 @@ test('parses the bypass review the model answers', () => {
   expect(parseBypassReview('not sure')).toBe(null)
 })
 
-test('the model reviews a bypass only when a rule would block the command', async ($, on) => {
+test('모델은 규칙에 막힐 명령의 우회 이유만 검토하고, 막을 규칙이 없는 명령의 주석에는 필요 없다고 알린다', async ($, on) => {
   const asked: string[] = []
   const store = new Map<string, unknown>()
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
@@ -32,8 +32,9 @@ test('the model reviews a bypass only when a rule would block the command', asyn
   expect(JSON.stringify(lazy)).toContain('[j-cc] Bypass rejected (search)')
   expect(JSON.stringify(lazy)).toContain('Use Grep with output_mode')
   expect(JSON.stringify(again)).toContain('Bypass rejected')
-  expect(JSON.stringify(binary)).not.toContain('[j-cc]')
-  expect(JSON.stringify(foreground)).not.toContain('[j-cc]')
+  expect(JSON.stringify(binary)).not.toContain('Bypass rejected')
+  expect(JSON.stringify(binary)).toContain('Foreground Bash and PowerShell calls are off')
+  expect(JSON.stringify(foreground)).toContain('comment on this command was not needed')
   expect(asked.length).toBe(2)
 })
 
@@ -44,7 +45,7 @@ test('a bypass passes when the model gives no answer', async ($, on) => {
   on('model.complete', () => ({ value: { isAnswered: false, text: '', usage: { input_tokens: 0, output_tokens: 0 } } }))
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
 
-  const r = await $.tool.call({ tool: 'Bash', command: 'git status && git diff # j-cc:allow: need both in one result' })
+  const r = await $.tool.call({ tool: 'Bash', command: 'grep -c MAGIC app.exe # j-cc:allow: Grep skips binary files', run_in_background: true })
 
   expect(JSON.stringify(r)).not.toContain('[j-cc]')
 })

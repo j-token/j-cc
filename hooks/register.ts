@@ -1,19 +1,8 @@
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
-import {
-  LONG_SECONDS,
-  TIMINGS_STORE_KEY,
-  backgroundNote,
-  backgroundReason,
-  commandKey,
-  countBackgrounded,
-  rememberTiming,
-  slowNote,
-  type Timings,
-} from './background'
-import { registerExec, registerExecTools } from './exec'
+import { EXEC_TOOL, isReportedTaskNotice, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { AUTO_BACKGROUND, BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst, subagentNote } from './prompt'
-import { screen } from './bypass'
+import { BASH_FIRST_STILL_ON, CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, hasShellFirst, replyLanguageNote, rewriteShellFirst, subagentNote } from './prompt'
+import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
 import { reason, type Verdict } from './rules'
 import {
@@ -56,29 +45,47 @@ async function modelLabel($: EngineInterface, evidence: Evidence): Promise<Label
   return label
 }
 
-type Decision = { deny: Verdict } | { background: string; fromHistory: boolean } | null
-
-function labelDecision(label: Label | null, background: boolean, isMain: boolean): Decision {
+function labelVerdict(label: Label | null, background: boolean): Verdict | null {
   const detail = `judged ${label}`
-  if (label === 'endless') return { deny: { kind: 'forever', detail } }
+  if (label === 'endless') return { kind: 'forever', detail }
   if (background) return null
-  if (label === 'wait_poll') return { deny: { kind: 'poll', detail } }
-  if (label === 'server') return isMain ? { background: 'judged a long-lived server', fromHistory: false } : { deny: { kind: 'watch', detail } }
-  if (label === 'long_job' && isMain) return { background: 'judged a multi-minute job', fromHistory: false }
+  if (label === 'wait_poll') return { kind: 'poll', detail }
+  if (label === 'server') return { kind: 'watch', detail }
   return null
 }
 
-type CallFacts = { command: string; shell: Shell; background: boolean; isMain: boolean; timeoutMs: number | undefined; key: string | null; timings: Timings }
-
-// 결정적 규칙을 통과한 명령에 대해: 백그라운드로 돌릴지, 모델 판정으로 막을지 정한다.
-async function decide($: EngineInterface, facts: CallFacts, useModel: boolean): Promise<Decision> {
-  // 서브에이전트는 백그라운드 결과를 받기 전에 끝날 수 있으므로 메인 루프에서만 돌린다.
-  const history = facts.background || !facts.isMain ? null : backgroundReason(facts.command, facts.shell, facts.timeoutMs, facts.key, facts.timings)
-  if (history) return { background: history.why, fromHistory: history.fromHistory }
+// 결정적 규칙이 정하지 못한 스크립트를 모델에게 보여 주고, 끝나지 않거나 기다리기만 하는 명령이면 막는다.
+async function judgeScript($: EngineInterface, command: string, shell: Shell, background: boolean, useModel: boolean): Promise<Verdict | null> {
   if (!useModel) return null
-  const evidence = await gatherEvidence($, facts.command, facts.shell)
+  const evidence = await gatherEvidence($, command, shell)
   if (!shouldAsk(evidence)) return null
-  return labelDecision(await modelLabel($, evidence).catch(() => null), facts.background, facts.isMain)
+  return labelVerdict(await modelLabel($, evidence).catch(() => null), background)
+}
+
+export const USE_EXEC_INSTEAD = `[j-cc] Foreground Bash and PowerShell calls are off: run this command with ${EXEC_TOOL} (cmd, and shell: "bash" or "powershell"). It returns within 30s with the output; a command still running then moves to the background and you are notified when it exits.`
+
+// `tools:` 로 도구를 직접 고른 에이전트는 exec 이 없을 수 있다. 그 정의에 exec 이 없으면 셸을 막지 않는다.
+const agentsWithoutExec = new Set<string>()
+
+// $ 를 받는 함수는 엔진이 따라갈 수 있게 최상위 function 선언으로 둔다. 화살표 함수에서는 $.env 가 비어 있었다.
+async function agentDefinitionDirs($: EngineInterface): Promise<string[]> {
+  const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
+  return ['.claude/agents', ...(home ? [`${home.replace(/\\/g, '/')}/.claude/agents`] : [])]
+}
+
+export function listsToolsWithoutExec(definition: string): boolean {
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(definition)?.[1] ?? ''
+  const tools = /^tools:\s*(.+)$/m.exec(frontmatter)?.[1]
+  return tools !== undefined && !tools.includes(EXEC_TOOL) && !tools.includes('mcp__j-cc__*')
+}
+
+async function hasNoExec($: EngineInterface, subagentType: string): Promise<boolean> {
+  if (subagentType.includes(':')) return false
+  for (const dir of await agentDefinitionDirs($)) {
+    const definition = await $.fs.read(`${dir}/${subagentType}.md`).catch(() => null)
+    if (definition !== null) return listsToolsWithoutExec(definition)
+  }
+  return false
 }
 
 const ATTACHMENT_REWRITES = [
@@ -156,6 +163,7 @@ export const register: Register = (on, options) => {
     if (e.fork) return next(e)
     const r = await next({ ...e, prompt: `${e.prompt}\n\n${subagentContext}` })
     if (r.agentId) briefedAgents.add(r.agentId)
+    if (r.agentId && (await hasNoExec($, e.subagentType).catch(() => false))) agentsWithoutExec.add(r.agentId)
     return r
   }).catch(($, e, next) => next(e))
 
@@ -189,6 +197,8 @@ export const register: Register = (on, options) => {
 
   on('prompt.attachment', async ($, e, next) => {
     const r = await next(e)
+    // exec 이나 poll 이 이미 종료까지 보고한 작업의 완료 알림은 같은 내용이라 지운다. 아직 보고하지 않은 작업의 알림은 그대로 둔다.
+    if (r.text && isReportedTaskNotice(r.text)) return { text: null }
     if (!r.text || !isMidConversationNotice(e)) return r
     return { ...r, text: `${r.text}\n${replyLanguageNote(await configuredLanguage($))}` }
   }).catch(($, e, next) => next(e))
@@ -196,51 +206,29 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
-    const brief = briefer(e.agentId, subagentContext)
     const background = e.run_in_background === true
     // 우회 주석이 없으면 결정적 차단은 저장소나 모델이 실패해도 그대로 동작한다.
     const screened = await screen($, e.command, shell, background, screenOptions)
+    const subagentBrief = briefer(e.agentId, subagentContext)
+    const needlessBypass = 'needlessBypass' in screened && screened.needlessBypass
+    const brief = (r: ToolCallResult) => subagentBrief(needlessBypass ? withNote(r, NEEDLESS_BYPASS_NOTE) : r)
     if ('deny' in screened) return brief({ deny: screened.deny })
-    if (screened.bypassed) return brief(await next(e))
+    // 포그라운드 셸은 끝날 때까지 아무것도 돌려주지 않아, 멈춘 명령을 모델이 타임아웃까지 기다린다. exec 은 30초 안에 돌아온다.
+    const hasExec = e.agentId === undefined || !agentsWithoutExec.has(e.agentId)
+    if (!background && hasExec) return brief({ deny: needlessBypass ? `${USE_EXEC_INSTEAD}\n${NEEDLESS_BYPASS_NOTE}` : USE_EXEC_INSTEAD })
 
-    const key = commandKey(e.command, shell)
-    const timings = ((await $.store.get(TIMINGS_STORE_KEY)) ?? {}) as Timings
-    const facts: CallFacts = {
-      command: e.command,
-      shell,
-      background,
-      isMain: e.agentId === undefined,
-      timeoutMs: e.timeout,
-      key,
-      timings,
-    }
-    const decision = await decide($, facts, useModel)
-    if (decision && 'deny' in decision) return brief({ deny: reason(decision.deny) })
-    if (decision) {
-      if (decision.fromHistory && key) await $.store.set(TIMINGS_STORE_KEY, countBackgrounded(timings, key)).catch(() => {})
-      const started = await next({ ...e, run_in_background: true })
-      return withNote(started, backgroundNote(decision.background))
-    }
-    if (facts.background) return brief(await next(e))
-
-    // 권한 확인 대화상자를 기다린 시간도 포함되므로, 느리다고 기록해도 몇 번 뒤에는 다시 잰다(countBackgrounded).
-    const startedAt = await $.clock.now()
-    const r = await next(e)
-    const seconds = ((await $.clock.now()) - startedAt) / 1000
-    if (!key || r.deny !== undefined) return brief(r)
-    const isSlow = seconds >= LONG_SECONDS
-    // 이미 기록된 키는 빨라진 결과도 남겨, 예전의 느린 기록이 계속 백그라운드 전환을 일으키지 않게 한다.
-    if (isSlow || timings[key] !== undefined) await $.store.set(TIMINGS_STORE_KEY, rememberTiming(timings, key, seconds)).catch(() => {})
-    if (!isSlow) return brief(r)
-    return brief(withNote(r, slowNote(seconds, facts.isMain)))
+    const verdict = await judgeScript($, e.command, shell, background, useModel)
+    if (verdict) return brief({ deny: reason(verdict) })
+    return brief(await next(e))
   }).catch(($, e, next) => next(e))
 
   registerExec(on, screenOptions)
 
   const shellNotes = screenOptions.blockChaining ? `${SHELL_TOOL_NOTE} ${CHAIN_NOTE}` : SHELL_TOOL_NOTE
+  // 포그라운드 셸을 막으므로 PowerShell 은 백그라운드 작업에만 쓰인다. 그 일은 Bash 로 충분해 ToolSearch 뒤로 미룬다.
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const r = await next(e)
-    return { ...r, description: `${r.description}\n\n${shellNotes}` }
+    return { ...r, description: `${r.description}\n\n${shellNotes}`, ...(e.tool === 'PowerShell' ? { isDeferred: true } : {}) }
   }).catch(($, e, next) => next(e))
 
   // 로그를 따라가야 할 때(학습, 서버) 모델은 ToolSearch 뒤에 있는 Monitor 대신 손에 있는 셸로 같은 로그를 몇십 초마다 다시 읽는다.
@@ -292,7 +280,7 @@ export const register: Register = (on, options) => {
         ...sections,
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
         { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
-        { id: 'j-cc:auto-background', text: AUTO_BACKGROUND, scope: 'session' as const },
+        { id: 'j-cc:shell-commands', text: SHELL_COMMANDS, scope: 'session' as const },
       ],
     }
   }).catch(($, e, next) => next(e))
