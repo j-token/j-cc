@@ -143,6 +143,8 @@ export function launchedTask(launched: unknown): { taskId: string; outputPath: s
 
 export const EXEC_DESCRIPTION = [
   'Run a shell command (shell: "bash" or "powershell").',
+  'Not for files: j-cc blocks commands that only view or search them (cat, head, sed -n, grep, rg, find, Get-Content, Select-String), even when chained with other such commands.',
+  'Read a line range with Read offset/limit, find text in a known file with Grep path, and send those calls in parallel.',
   `If it finishes within yield_time_ms (default ${DEFAULT_YIELD_MS}, at most ${MAX_EXEC_YIELD_MS}) you get the exit code and output.`,
   'Otherwise it keeps running in the background like Bash run_in_background: you get the output so far and a session_id, and you are notified when it exits, so go on with other work.',
   `Call poll with that session_id only when you need its output before then (it waits up to ${MAX_POLL_YIELD_MS} ms per call), or with terminate: true to stop it.`,
