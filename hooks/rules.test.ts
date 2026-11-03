@@ -148,6 +148,14 @@ test('blockChaining을 켜지 않으면 훅이 이은 명령을 막지 않고 �
   expect(JSON.stringify(viewing)).toContain('[j-cc] Blocked (view)')
 })
 
+test('Monitor는 ToolSearch 뒤에 두지 않고 처음부터 불러오며 설명은 그대로 둔다', async ($, on) => {
+  on('tool.describe', () => ({ description: 'Start a background monitor.', isDeferred: true }))
+
+  const monitor = await $.tool.describe({ tool: 'Monitor', description: 'Start a background monitor.', isDeferred: true, provider: { plugin: 'engine', tier: 'core' } } as never)
+
+  expect(monitor).toEqual({ description: 'Start a background monitor.', isDeferred: false })
+})
+
 test('appends the routing section to the system prompt', async ($, on) => {
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'hello', scope: 'shared' }] }))
   const { sections } = await $.prompt.compose({

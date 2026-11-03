@@ -243,6 +243,9 @@ export const register: Register = (on, options) => {
     return { ...r, description: `${r.description}\n\n${shellNotes}` }
   }).catch(($, e, next) => next(e))
 
+  // 로그를 따라가야 할 때(학습, 서버) 모델은 ToolSearch 뒤에 있는 Monitor 대신 손에 있는 셸로 같은 로그를 몇십 초마다 다시 읽는다.
+  on('tool.describe', { tool: 'Monitor' }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false })).catch(($, e, next) => next(e))
+
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     if (e.tool !== 'Read' || !shouldCapRead(e)) return next(e)
     const r = await next({ ...e, limit: READ_DEFAULT_LIMIT })
