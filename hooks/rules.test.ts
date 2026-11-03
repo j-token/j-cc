@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { hasShellFirst, rewriteShellFirst } from './prompt'
-import { judge } from './rules'
+import { judge, reason } from './rules'
 
 type Case = [tool: 'Bash' | 'PowerShell', command: string, background: boolean, expected: string | null]
 
@@ -107,6 +107,20 @@ for (const [tool, command, background, expected] of CHAIN_CASES) {
     expect(verdict?.kind ?? null).toBe(expected)
   })
 }
+
+test('보기와 검색을 이어 붙인 명령은 Grep과 Read를 함께 안내한다', () => {
+  const verdict = judge("sed -n '100,200p' src/ui/errors.ts; grep -n redeemErrorText tests/gauge.test.ts", 'bash', false)
+
+  expect(verdict).toEqual({ kind: 'search', detail: 'also views' })
+  expect(reason(verdict!)).toContain('Use `Grep`')
+  expect(reason(verdict!)).toContain('Use `Read`')
+})
+
+test('파일 보기 뒤 파이프로 검색만 하면 Read를 안내하지 않는다', () => {
+  const verdict = judge('cat src/app.ts | grep def', 'bash', false)
+
+  expect(verdict).toEqual({ kind: 'search' })
+})
 
 test('chaining off allows chained commands', () => {
   const verdict = judge('git status && git diff --stat', 'bash', false, { blockChaining: false })

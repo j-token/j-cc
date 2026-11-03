@@ -179,16 +179,23 @@ function dedicatedToolVerdict(command: string, shell: Shell, nesting = 0): Verdi
   }
   // 명령 전체가 파일 보기·검색뿐일 때만 막는다.
   if (substitutions.length || !segments.length) return null
+  // 파이프라인 하나는 마지막 단계의 판정으로 합친다. `cat a | grep x` 는 보기가 아니라 검색이다.
   const kinds: ReadKind[] = []
   for (const seg of segments) {
     const kind = readKind(seg, shell)
-    kinds.push(seg.piped ? pipedKind(kind, kinds.at(-1)) : kind)
+    if (seg.piped && kinds.length) kinds[kinds.length - 1] = pipedKind(kind, kinds.at(-1))
+    else kinds.push(seg.piped ? pipedKind(kind, undefined) : kind)
   }
   if (kinds.includes('other')) return null
-  if (kinds.includes('search')) return { kind: 'search' }
-  if (kinds.includes('view')) return { kind: 'view' }
+  const searches = kinds.includes('search')
+  const views = kinds.includes('view')
+  if (searches && views) return { kind: 'search', detail: ALSO_VIEWS }
+  if (searches) return { kind: 'search' }
+  if (views) return { kind: 'view' }
   return null
 }
+
+const ALSO_VIEWS = 'also views'
 
 const DURATION_UNIT: Record<string, number> = { '': 1, s: 1, m: 60, h: 3600, d: 86400 }
 
@@ -428,7 +435,16 @@ const GUIDANCE: Record<Kind, string[]> = {
 
 const verdictTag = (verdict: Verdict) => (verdict.detail ? `${verdict.kind}, ${verdict.detail}` : verdict.kind)
 
-export const guidance = (verdict: Verdict) => GUIDANCE[verdict.kind].join('\n')
+const SEARCH_AND_VIEW_GUIDANCE = [
+  'This command only searches and prints files (grep, find, ... together with cat, head, sed -n, Get-Content, ...).',
+  GUIDANCE.search[1],
+  GUIDANCE.view[1],
+]
+
+export function guidance(verdict: Verdict): string {
+  const lines = verdict.kind === 'search' && verdict.detail === ALSO_VIEWS ? SEARCH_AND_VIEW_GUIDANCE : GUIDANCE[verdict.kind]
+  return lines.join('\n')
+}
 
 const BYPASS_HINT =
   'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely why the dedicated tool cannot do it; a small model checks that reason before the command runs.'
