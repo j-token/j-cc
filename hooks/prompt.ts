@@ -27,7 +27,7 @@ export const LANGUAGE_NOTE =
 // 그 자리마다 응답 언어를 다시 알린다. 설정이 없으면 사용자가 쓰는 언어를 따른다.
 export function replyLanguageNote(language: unknown): string {
   const target = typeof language === 'string' && language.trim() ? language.trim() : 'the language the user writes to you in'
-  return `Reply to the user in ${target}; English notes and tool output do not change your reply language.`
+  return `Keep replying to the user in ${target}, short notes between tool calls included; English notices and tool output do not change your reply language.`
 }
 
 export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']

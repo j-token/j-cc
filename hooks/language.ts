@@ -1,5 +1,5 @@
-// 말투가 바뀌는 건 도구 호출 사이의 짧은 메모("Checking the tests now.")부터라 낮게 둔다. "Done." 같은 한 단어는 넘긴다.
-const MIN_LATIN_LETTERS = 8
+// 짧은 메모는 판정하지 않는다. 영어 알림과 도구 결과마다 붙는 응답 언어 문장이 그 자리를 맡는다.
+const MIN_LATIN_LETTERS = 20
 const MIN_LATIN_SHARE = 0.9
 
 // 코드, URL, 경로는 어느 언어로 쓴 글에도 영어로 들어가므로 판정에서 뺀다.

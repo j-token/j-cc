@@ -2,7 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import { USE_EXEC_INSTEAD, listsToolsWithoutExec } from './register'
 
 const contextOf = (r: unknown) => ((r as { context?: string[] }).context ?? []).join('\n')
-const KEEP_CURRENT_LANGUAGE = 'Reply to the user in the language the user writes to you in; English notes and tool output do not change your reply language.'
+const KEEP_CURRENT_LANGUAGE =
+  'Keep replying to the user in the language the user writes to you in, short notes between tool calls included; English notices and tool output do not change your reply language.'
 
 test('포그라운드 Bash와 PowerShell은 막고 exec을 쓰라고 안내하며, 백그라운드 실행은 그대로 둔다', async ($, on) => {
   const ran: (boolean | undefined)[] = []
@@ -112,7 +113,7 @@ test('메인 세션의 모든 도구 결과 뒤에 응답 언어 문장을 한 �
   const main = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts' } as never))
   const sub = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts', agentId: 'sub-1' } as never))
 
-  expect(main).toBe('Reply to the user in 한국어; English notes and tool output do not change your reply language.')
+  expect(main).toBe('Keep replying to the user in 한국어, short notes between tool calls included; English notices and tool output do not change your reply language.')
   expect(sub).toBe('')
 })
 

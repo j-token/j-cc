@@ -12,9 +12,7 @@ test('영문자가 대부분인 산문만 영어일 수 있다고 본다', () =>
   expect(mayBeEnglish(KOREAN_NOTE)).toBe(false)
   expect(mayBeEnglish('결과는 아래와 같습니다.\n```ts\nconst answer = await next(e)\nreturn answer\n```')).toBe(false)
   expect(mayBeEnglish('`C:\\Users\\me\\j-cc\\hooks\\register.ts` https://example.com/some/long/path')).toBe(false)
-  expect(mayBeEnglish('Checking the tests now.')).toBe(true)
-  expect(mayBeEnglish('Read로 다시 확인합니다.')).toBe(false)
-  expect(mayBeEnglish('PowerShell로 확인합니다.')).toBe(false)
+  expect(mayBeEnglish('Checking the tests now.')).toBe(false)
   expect(mayBeEnglish('Done.')).toBe(false)
   expect(mayBeEnglish('')).toBe(false)
 })
@@ -115,14 +113,25 @@ test('턴 끝에서 판정한 답변은 다음 도구 호출에서 다시 묻지
   expect(asked).toEqual([ENGLISH_NOTE])
 })
 
-test('짧은 영어 메모도 판정해 다음 도구 결과에 경고를 붙인다', async ($, on) => {
-  const asked = engine(on, 'Checking the tests now.', () => 'written in another language')
+const KEEP_KOREAN =
+  'Keep replying to the user in 한국어, short notes between tool calls included; English notices and tool output do not change your reply language.'
 
-  await step($)
-  const r = contextOf(await $.tool.call({ tool: 'Glob', pattern: '*.ts' } as never))
+test('쉬는 중에 들어온 작업 완료 알림에는 응답 언어 문장을 붙인다', async ($, on) => {
+  engine(on, KOREAN_NOTE, () => 'written in another language')
+  promptEngine(on)
 
-  expect(asked).toEqual(['Checking the tests now.'])
-  expect(r).toEndWith(WARNING)
+  const r = contextOf(await $.prompt.submit({ text: '<task-notification><task-id>t9</task-id></task-notification>', origin: { kind: 'task-notification' } } as never))
+
+  expect(r).toBe(KEEP_KOREAN)
+})
+
+test('사용자가 직접 보낸 프롬프트에는 응답 언어 문장을 붙이지 않는다', async ($, on) => {
+  engine(on, KOREAN_NOTE, () => 'written in another language')
+  promptEngine(on)
+
+  const r = contextOf(await $.prompt.submit({ text: '다음 작업', origin: { kind: 'composer' } } as never))
+
+  expect(r).toBe('')
 })
 
 test('모델이 설정 언어로 쓴 글이라고 판정하면 경고하지 않는다', async ($, on) => {

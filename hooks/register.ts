@@ -137,6 +137,9 @@ const UPFRONT_ATTACHMENTS = new Set([
   'total_tokens_reminder',
 ])
 
+// 사용자가 직접 보낸 프롬프트는 그 자체가 사용자의 언어다. 쉬는 중에 들어온 영어 알림·예약·다른 세션의 메시지에만 응답 언어를 다시 알린다.
+const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
+
 function isMidConversationNotice(e: { type: string; origin: { kind: string } }): boolean {
   return e.origin.kind !== 'plugin' && !UPFRONT_ATTACHMENTS.has(e.type)
 }
@@ -219,7 +222,11 @@ export const register: Register = (on, options) => {
     if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
     const language = driftAtTurnEnd
     driftAtTurnEnd = null
-    return next(language ? { ...e, context: [...(e.context ?? []), driftWarning(language)] } : e)
+    const notes = [
+      ...(USER_ORIGINS.has(e.origin?.kind ?? '') ? [] : [replyLanguageNote(await configuredLanguage($))]),
+      ...(language ? [driftWarning(language)] : []),
+    ]
+    return next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
   }).catch(($, e, next) => next(e))
 
   on('prompt.attachment', async ($, e, next) => {
