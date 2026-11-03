@@ -79,6 +79,18 @@ test('셸 판정이 ask이면 exec에 대한 엔진 판정을 넘기고, allow�
   expect(denied.decision).toBe('deny')
 })
 
+test('auto 분류기가 Bash 판정을 내지 않아 거부하면 exec에 대한 엔진 판정을 넘긴다', async ($, on) => {
+  const NO_VERDICT = 'The server-side auto mode classifier gave no verdict for Bash: the request that produced this action did not ask for one.'
+  on('tool.check', ($, e) => {
+    if (e.tool === EXEC_TOOL) return { decision: 'ask', reason: 'engine verdict for exec' }
+    return { decision: 'deny', reason: NO_VERDICT }
+  })
+
+  const verdict = await $.tool.check({ tool: EXEC_TOOL, input: { cmd: 'msedge --headless' } })
+
+  expect(verdict).toEqual({ decision: 'ask', reason: 'engine verdict for exec' })
+})
+
 test('exec은 j-cc 셸 규칙을 그대로 적용해 파일 보기 명령을 막는다', async ($, on) => {
   on('env.get', () => ({ value: undefined }))
   const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'cat src/app.ts' } as never)

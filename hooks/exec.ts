@@ -111,6 +111,15 @@ export function passedPermission(gate: { deny?: string; isError?: boolean; text?
   return gate.deny === undefined && gate.isError === true && (gate.text ?? '').includes(UNANSWERED_CALL)
 }
 
+// auto 모드에서 훅이 Bash 판정을 따로 물으면, 서버 분류기는 모델이 낸 적 없는 Bash 행동이라 판정하지 않고 이 문구로 거부한다.
+// 이 거부는 명령에 대한 판단이 아니므로 ask 처럼 다룬다. 문구가 바뀌면 거부가 그대로 남을 뿐, 권한을 건너뛰지는 않는다.
+const CLASSIFIER_NO_VERDICT = 'classifier gave no verdict'
+
+export function defersToEngine(shellVerdict: { decision?: string }): boolean {
+  if (shellVerdict.decision === 'ask') return true
+  return shellVerdict.decision === 'deny' && JSON.stringify(shellVerdict).includes(CLASSIFIER_NO_VERDICT)
+}
+
 // 엔진의 완료 알림 본문에 `<task-id>...</task-id>` 가 들어 있다.
 export function noticeTaskId(text: string): string | undefined {
   return /<task-id>([^<\s]+)<\/task-id>/.exec(text)?.[1]
@@ -251,7 +260,8 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const shellVerdict = await $.tool.check({ tool: shellToolName(shellOf(args)), input: { command } })
     // 훅이 돌려준 ask 는 사람만 답할 수 있어, auto 분류기의 허용도 "항상 허용" 규칙도 듣지 않고 매번 묻는다.
     // 같은 명령의 셸 판정이 ask 이면 엔진이 exec 에 내린 판정을 받은 그대로 넘겨, 묻는 일을 모드의 결정자에게 맡긴다.
-    return shellVerdict.decision === 'ask' ? own : shellVerdict
+    // 그러면 auto 분류기는 모델이 실제로 낸 exec 호출을 판정한다.
+    return defersToEngine(shellVerdict) ? own : shellVerdict
   }).catch(() => ({ decision: 'deny' as const, reason: 'j-cc could not check the permission for this command.' }))
 
   // poll 은 exec 이 이미 허락받고 시작한 명령의 출력을 읽거나 멈추기만 한다.
