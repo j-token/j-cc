@@ -29,7 +29,7 @@ Claude Code, Codex CLI, Gemini CLI, Mistral Vibe, OpenHands, Aider, Mini-SWE-Age
 
 - **j-cc 사용 여부**: 훅 맥락(`hook_additional_context`)이나 도구 결과가 `[j-cc]`로 시작하거나, 시스템 프롬프트 스냅숏에 `# Automatic backgrounding (j-cc)`가 있거나, `mcp__j-cc__*` 도구를 부른 세션을 j-cc 세션으로 본다. 파일 내용에 `[j-cc]`가 들어 있는 경우(소스 읽기)는 세지 않는다.
 - **이전 플러그인**: 도구 결과나 훅 출력에 `[use-right-tool] Blocked`가 있으면 use-right-tool 세션으로 따로 센다.
-- **제외**: 사람이 직접 입력한 프롬프트가 없는 세션, 진입점이 `cli`가 아닌 세션(SDK, 데스크톱 앱 등), `AppData` 아래 임시·벤치마크 작업 폴더, j-cc·use-rightTool·language-hook 개발 폴더. 남은 메인 세션은 469개, 서브에이전트는 1,792개다.
+- **제외**: 사람이 직접 입력한 프롬프트가 없는 세션, 진입점이 `cli`가 아닌 세션(SDK, 데스크톱 앱 등), `AppData` 아래 임시·벤치마크 작업 폴더, j-cc와 이전 플러그인의 개발 폴더. 남은 메인 세션은 469개, 서브에이전트는 1,792개다.
 - **같은 기간 비교**: j-cc는 10월 16일부터 쓰였으므로, 미사용 세션은 전체 기간과 10월 16일 이후로 나눠 본다.
 - **셸 파일 보기·검색**은 이 조사용 근사 분류다(첫 명령이 cat/head/Get-Content 등이면 보기, grep/rg/find/Select-String 등이면 검색). j-cc의 차단 규칙과 똑같지는 않다.
 - **검사 없이 끝난 코드 수정 턴**: 사람 프롬프트 사이의 한 턴에서 코드 파일(.ts, .py, .rs 등)을 Edit/Write했는데, 마지막 수정 뒤에 테스트·빌드·타입 검사·실행 명령이 한 번도 없었던 턴의 비율이다.
@@ -113,9 +113,9 @@ Run-Ze Fan 외. *An Empirical Study of Harness Design for Coding Agents*. arXiv:
 | 막힌 명령 | 종류 | 뒤의 행동 |
 |---|---|---|
 | `node -v; npm -v`, `Get-Process …; Get-Command …`, `Get-ChildItem …; Test-Path …`, `npx … ; echo "exit=$?"`, `Copy-Item …; Copy-Item …; Get-Item …` 등 | 해가 없는 조회·작업을 `;`로 묶음 (9종) | 같은 명령을 한 번 더 보냈다가 다시 막히거나, 호출 2~3개로 나눴다 |
-| `for g in …; do some-cli command $g …; done` | 반복문 (1종) | 호출 4~5개로 나눴다 |
-| `until some-cli command … status … ; do sleep 2; done` (2종) | 백그라운드 대기 루프 | j-cc의 대기 규칙은 백그라운드 until 루프를 허용하는데, 체이닝 규칙이 대신 막았다. scratchpad 스크립트로 우회했다 |
-| `cd /c/…/my-project && node core/render/video.mjs …` | `cd … &&` (1종) | 절대 경로로 다시 실행했다. 이 차단은 쓸모가 있었다 |
+| `for g in …; do <cli> $g …; done` | 반복문 (1종) | 호출 4~5개로 나눴다 |
+| `until <cli> … status … ; do sleep 2; done` (2종) | 백그라운드 대기 루프 | j-cc의 대기 규칙은 백그라운드 until 루프를 허용하는데, 체이닝 규칙이 대신 막았다. scratchpad 스크립트로 우회했다 |
+| `cd /c/…/<프로젝트> && node … …` | `cd … &&` (1종) | 절대 경로로 다시 실행했다. 이 차단은 쓸모가 있었다 |
 
 막힌 호출은 실행되지 않고 왕복 하나를 버린다. 그 뒤 나눠 실행하면 호출이 더 늘어난다. 논문에서 bash의 이점은 이렇게 묶어 실행하는 데서 나왔다. 파일 보기·검색·수정은 체인 안에서도 막히므로(전용 도구 규칙은 세그먼트마다 본다), 체이닝 차단을 꺼도 j-cc의 핵심 규칙은 남는다.
 
@@ -142,7 +142,7 @@ Codex(`openai/codex`의 codex-rs)에서는 이런 문제가 없다. `exec_comman
 - 30초가 지나면 `$.turn.abort`로 턴을 끊어 실행 중인 Bash를 백그라운드로 넘기는 방식. 모델이 아직 출력을 쓰는 중이면 명령이 취소되고, 같이 줄 선 호출도 "re-run if still needed"로 취소되었다.
 - Bash `timeout`을 30초로 낮추는 방식. 타임아웃이 지나면 명령은 죽지 않고 백그라운드로 넘어간다("moved to the background"). 처음에 죽는 것처럼 보였던 것은 사용자가 Esc를 눌렀기 때문이었다. 다만 넘어간 명령이 끝나지 않으면 완료 알림도 오지 않는다.
 
-그래서 포그라운드 Bash·PowerShell을 막고 exec(`shell` 인자로 bash·powershell 선택)로 모았다. `run_in_background: true`는 그대로 둔다. PowerShell은 ToolSearch 뒤로 미뤘다. 셸 명령은 exec로 가고, 백그라운드 작업은 Bash로 충분하기 때문이다. 서브에이전트도 훅을 거치므로 똑같이 막는다. 다만 정의 파일의 `tools:` 목록에 exec가 없는 에이전트(`other-plugin-*` 4개, `other-agent`)는 막지 않는다. `$.tool.list`와 `agent.spawn`은 에이전트별 도구 목록을 주지 않아서 정의 파일을 읽는다.
+그래서 포그라운드 Bash·PowerShell을 막고 exec(`shell` 인자로 bash·powershell 선택)로 모았다. `run_in_background: true`는 그대로 둔다. PowerShell은 ToolSearch 뒤로 미뤘다. 셸 명령은 exec로 가고, 백그라운드 작업은 Bash로 충분하기 때문이다. 서브에이전트도 훅을 거치므로 똑같이 막는다. 다만 정의 파일의 `tools:` 목록에 exec가 없는 에이전트는 막지 않는다. `$.tool.list`와 `agent.spawn`은 에이전트별 도구 목록을 주지 않아서 정의 파일을 읽는다.
 
 ### 훅 예산 실험
 
@@ -162,7 +162,7 @@ Codex(`openai/codex`의 codex-rs)에서는 이런 문제가 없다. `exec_comman
 
 **문제.** `$.process.spawn`은 명령을 호스트에서 바로 실행한다(타입 문서: "Starts a command on the host"). 인자는 `argv`, `cwd`, `env`, `input`뿐이고 샌드박스 옵션이 없다. 엔진의 샌드박스 관리자도 플러그인에 노출되지 않는다. 그래서 샌드박스를 켜도 exec 명령은 샌드박스 밖에서 돈다. 게다가 exec의 권한은 같은 명령의 Bash 판정을 따르므로, `autoAllowBashIfSandboxed`가 켜져 있으면 묻지도 않고 샌드박스 밖에서 실행될 수 있었다.
 
-**이 PC의 샌드박스 상태 (Claude Code 2.1.316, Windows 11).**
+**확인한 샌드박스 상태 (Claude Code 2.1.316, Windows 11).**
 - 실행 파일 안의 문구 "Sandboxing is currently only supported on macOS, Linux, and WSL2"는 낡은 오류 메시지다. 실제 판정(`isSupportedPlatform`)은 Windows에서 `r4()`를 보고, `r4()`는 기능 플래그 `tengu_nankeen_kestrel`이나 환경변수 `CLAUDE_CODE_NANKEEN_KESTREL`을 본다.
 - `claude sandbox status`: `"The Windows sandbox is not enabled on this build."`, `supported: false`.
 - `CLAUDE_CODE_NANKEEN_KESTREL=1 claude sandbox status`: `supported: true`. 다만 "set up by a different release (setup version 2; this release needs 3)"라서 `claude sandbox install`(관리자 승인 필요)이 다시 필요하다. 설치는 하지 않았다.
@@ -187,24 +187,24 @@ Codex(`openai/codex`의 codex-rs)에서는 이런 문제가 없다. `exec_comman
 | 서브에이전트에서 포그라운드, `timeout` 15초로 호출 | 처음부터 백그라운드로 시작했고(`is_backgrounded: true`), 15초에 "stopped after reaching its background time limit"으로 멈췄다. 서브에이전트에서는 `timeout`이 백그라운드 마감으로 쓰인다. |
 | 백그라운드로 넘어간 작업 | 끝나거나 멈추면 엔진이 `task_notification`을 모델에게 보냈다. |
 
-엔진 코드에서도 백그라운드 마감을 확인했다. 기본값은 `600000`ms(10분)이고, 기능 플래그(`tengu_cosmic_shore`, `tengu_crispy_glade`)와 `backgroundDeadlineDisabled`에 따라 켜진다. 켜져 있으면 Bash 설명에 "With it, `timeout` limits how long the command may run in the background"가 붙는다. 실험한 `claude -p`에서는 켜져 있었고, 이 대화형 세션의 Bash 설명에는 그 문구가 없었다.
+엔진 코드에서도 백그라운드 마감을 확인했다. 기본값은 `600000`ms(10분)이고, 기능 플래그(`tengu_cosmic_shore`, `tengu_crispy_glade`)와 `backgroundDeadlineDisabled`에 따라 켜진다. 켜져 있으면 Bash 설명에 "With it, `timeout` limits how long the command may run in the background"가 붙는다. 실험한 `claude -p`에서는 켜져 있었고, 대화형 세션의 Bash 설명에는 그 문구가 없었다.
 
 **결정.**
 - exec는 명령을 Bash·PowerShell 도구에 `run_in_background: true`로 넘긴다. `timeout`은 주지 않아 엔진 기본 마감을 따른다. 서브에이전트에서는 포그라운드로 불러도 백그라운드로 바뀌고 `timeout`이 마감이 되므로, 처음부터 백그라운드로 넘기는 쪽이 메인과 서브에이전트에서 똑같이 동작한다.
 - 권한은 지금처럼 exec의 `tool.check` 훅이 같은 명령의 Bash·PowerShell 판정으로 정한다. 안쪽 호출은 권한을 다시 묻지 않으므로 이것이 유일한 관문이다. 샌드박스와 `autoAllowBashIfSandboxed`가 켜져 있으면 Bash 판정이 허용이 되고, 안쪽 Bash가 샌드박스 안에서 실행한다.
 - exec와 poll은 출력 파일을 읽어 끝을 판단한다. 기다리는 동안에는 0.25초마다 빈 줄을 찍는 tick 프로세스(Git Bash, 없으면 pwsh)를 띄우고, 한 줄이 올 때마다 파일을 다시 읽는다. 엔진이 돌리는 작업을 기다리는 시간은 예산에 들어갈 수 있다. 반면 이번 호출이 띄운 프로세스의 출력을 읽는 동안은 예산이 줄지 않는다. tick 프로세스를 띄우지 못하면 8초와 남은 예산에서 1.5초를 뺀 값 중 작은 쪽까지만 기다린다.
-- yield가 지나도 끝나지 않은 명령은 백그라운드에서 계속 돈다. 사용자 요청대로 따로 안내하지 않고, 엔진의 완료 알림을 띄워 모델이 다른 일로 넘어가게 한다. exec 결과에도 "You are notified when it exits; meanwhile do other work"라고 적는다. poll은 그 전에 출력이 필요할 때만 쓴다.
+- yield가 지나도 끝나지 않은 명령은 백그라운드에서 계속 돈다. 따로 안내하지 않고, 엔진의 완료 알림을 띄워 모델이 다른 일로 넘어가게 한다. exec 결과에도 "You are notified when it exits; meanwhile do other work"라고 적는다. poll은 그 전에 출력이 필요할 때만 쓴다.
 - exec나 poll이 이미 종료를 보고한 작업의 알림은 중복이라 지운다. 턴 중간에 실리는 알림은 `prompt.attachment`에서 `text: null`로 지우고, 세션이 쉬는 중에 들어오는 알림은 `prompt.submit`에서 버린다. 버리는 사유 한 줄은 사용자에게 보인다. matcher 없는 `prompt.attachment` 훅은 모듈에 하나만 둘 수 있어, register.ts의 기존 훅에 합쳤다.
 - terminate는 `TaskStop`을 부른다.
 - `cwd`는 안쪽 명령 앞에 `cd -- '<cwd>' && `(PowerShell은 `Set-Location -LiteralPath '<cwd>'; `)를 붙여 지원한다. 같은 플러그인 훅이 다시 걸리지 않으므로 j-cc의 체이닝 차단에 걸리지 않는다.
 - 덤으로, 작업을 엔진이 관리하므로 j-cc가 다시 불러와져도 exec 명령이 멈추지 않는다. 그래서 "오래 걸리는 작업은 `run_in_background`로"라는 안내를 뺐다.
 
-**처음부터 끝까지 확인 (`claude -p --plugin-dir C:/Users/me/j-cc`, Claude Code 2.1.316, j-cc 0.9.0으로 낸 개발본).**
+**처음부터 끝까지 확인 (`claude -p --plugin-dir <j-cc>`, Claude Code 2.1.316, j-cc 0.9.0으로 낸 개발본).**
 
 | 시나리오 | 결과 |
 |---|---|
 | `print('quick')` | `Process exited with code 0 (wall 3.6s)`. 첫 호출이라 셸 준비 시간이 들어간 것으로 보인다. 엔진은 완료 알림을 만들었지만 모델에게는 가지 않았다. |
-| `pwd`, `cwd: C:/Users/me/j-cc/hooks` | `/c/Users/me/j-cc/hooks` (0.4초). |
+| `pwd`, `cwd: <j-cc>/hooks` | `<j-cc>/hooks`의 Git Bash 경로(`/c/…/j-cc/hooks`) (0.4초). |
 | `shell: powershell`, `Write-Output` | 1.0초에 출력. |
 | 20초 명령, yield 5초, poll 안 함 | `Process running in the background with session_id 4 (wall 7.5s)`와 출력 0~5. 명령이 끝나자 완료 알림이 모델에게 갔다. |
 | 300초 명령, yield 3초, 이어서 terminate | `Process exited with signal killed (wall 6.1s)`. "stopped" 알림은 모델에게 가지 않았다. |
