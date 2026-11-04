@@ -80,10 +80,10 @@ Requires Claude Code 2.1.301 or later (hooks module API).
 
 j-cc is a tool that helps the workflow; it is **not a security boundary.**
 
-**If your organization manages Claude Code**, a plugin you install yourself cannot change the system prompt, so only part of j-cc works.
+**If your organization manages Claude Code**, a plugin you install yourself cannot change the system prompt or the notices added to the conversation, so only part of j-cc works.
 
 - Works: 1-3 (command blocking, exec, endless-loop blocking), the Read and Grep output caps, the reply-language reminder on tool results and the language drift warning
-- Does not work: the rules in 4 (your instructions first, skills first, check before done), the addition to the `language` instruction, shortening the skill, agent and MCP listings
+- Does not work: the rules in 4 (your instructions first, skills first, check before done), the shorter Claude in Chrome section, the addition to the `language` instruction, the reply-language reminder on mid-conversation notices, shortening the skill and agent listings, capping MCP instructions and grouping the deferred tool list, removing `total_tokens_reminder`, dropping duplicate completion notices for commands exec already reported
 
 ## Evidence
 
