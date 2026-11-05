@@ -66,6 +66,7 @@ Read / Edit ...          → meanwhile, read and edit other files
 ```
 
 - poll is used only when the result is needed. Repeating poll with no other work in between is refused.
+- If you send a message while exec or poll is waiting, it returns right away with the output so far and Claude reads your message. Claude Code hands a mid-turn message to Claude only when a tool result comes back, so without this the message waited up to 30 seconds behind exec and up to 5 minutes behind poll. The command keeps running. This does not apply to `claude -p`, where the message reaches the hook only after the tool result.
 - Up to 16 commands can run at once, and output is cut to 20,000 characters by default, keeping the head and tail.
 - Each call starts a fresh shell with stdin closed, so interactive commands that wait for input cannot be used.
 

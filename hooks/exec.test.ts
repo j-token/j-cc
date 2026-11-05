@@ -7,6 +7,8 @@ import {
   POLL_TOOL,
   budgetedYieldMs,
   clip,
+  cutMainLoopWaits,
+  holdWait,
   isIdlePoll,
   isReportedTaskNotice,
   launchedTask,
@@ -21,6 +23,7 @@ import {
   yieldMs,
   type Run,
 } from './exec'
+import { isUserSteering } from './register'
 
 test('출력이 한도를 넘으면 앞부분 일부와 뒷부분을 남긴다', () => {
   expect(clip('0123456789', 20)).toBe('0123456789')
@@ -167,6 +170,47 @@ test('메인 루프가 보고 뒤 다른 일 없이 부른 poll만 쉬는 poll�
   expect(isIdlePoll(run, 'agent-1')).toBe(false)
   noteActivity()
   expect(isIdlePoll(run, undefined)).toBe(false)
+})
+
+test('사용자 메시지가 오면 메인 루프의 대기만 끊고 서브에이전트의 대기는 둔다', () => {
+  const engine = new AbortController()
+  const mainWait = holdWait(undefined, engine.signal)
+  const subagentWait = holdWait('agent-1', engine.signal)
+
+  expect(cutMainLoopWaits()).toBe(1)
+
+  expect(mainWait.cutByUser()).toBe(true)
+  expect(subagentWait.signal.aborted).toBe(false)
+  mainWait.release()
+  subagentWait.release()
+})
+
+test('엔진이 중단한 대기는 사용자 메시지로 끊긴 것으로 보지 않는다', () => {
+  const engine = new AbortController()
+  const wait = holdWait(undefined, engine.signal)
+
+  engine.abort()
+
+  expect(wait.signal.aborted).toBe(true)
+  expect(wait.cutByUser()).toBe(false)
+  wait.release()
+})
+
+test('끝난 대기는 다음 사용자 메시지에 끊기지 않는다', () => {
+  const wait = holdWait(undefined, new AbortController().signal)
+  wait.release()
+
+  expect(cutMainLoopWaits()).toBe(0)
+  expect(wait.signal.aborted).toBe(false)
+})
+
+test('턴 도중 사용자가 직접 보낸 메시지만 대기를 끊는다', () => {
+  expect(isUserSteering({ turnId: 't1', wait: false, origin: { kind: 'composer' } })).toBe(true)
+  expect(isUserSteering({ turnId: 't1', wait: false, origin: { kind: 'bridge' } })).toBe(true)
+  expect(isUserSteering({ turnId: 't1', wait: true, origin: { kind: 'composer' } })).toBe(false)
+  expect(isUserSteering({ turnId: 't1', wait: false, origin: { kind: 'task-notification' } })).toBe(false)
+  expect(isUserSteering({ turnId: 't1', wait: false, origin: { kind: 'peer' } })).toBe(false)
+  expect(isUserSteering({ wait: false, origin: { kind: 'composer' } })).toBe(false)
 })
 
 test('poll은 session_id 없이 부르면 실행 중인 명령이 없다고 알린다', async $ => {

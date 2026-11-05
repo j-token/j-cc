@@ -1,5 +1,5 @@
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
-import { EXEC_TOOL, POLL_TOOL, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
+import { EXEC_TOOL, POLL_TOOL, cutMainLoopWaits, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
@@ -138,6 +138,11 @@ const UPFRONT_ATTACHMENTS = new Set([
 // 사용자가 직접 보낸 프롬프트는 그 자체가 사용자의 언어다. 쉬는 중에 들어온 영어 알림·예약·다른 세션의 메시지에만 응답 언어를 다시 알린다.
 const USER_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
 
+// 턴 도중 사용자가 직접 보낸 메시지. 차례를 기다리라고 보낸 메시지(chat:queueSubmit)는 지금 작업을 끊지 않는다.
+export function isUserSteering(e: { turnId?: string; wait?: boolean; origin?: { kind: string } }): boolean {
+  return e.turnId !== undefined && e.wait !== true && USER_ORIGINS.has(e.origin?.kind ?? '')
+}
+
 function isMidConversationNotice(e: { type: string; origin: { kind: string } }): boolean {
   return e.origin.kind !== 'plugin' && !UPFRONT_ATTACHMENTS.has(e.type)
 }
@@ -222,7 +227,10 @@ export const register: Register = (on, options) => {
       ...(USER_ORIGINS.has(e.origin?.kind ?? '') ? [] : [replyLanguageNote(await configuredLanguage($))]),
       ...(language ? [driftWarning(language)] : []),
     ]
-    return next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
+    const r = await next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
+    // next 가 돌아와야 메시지가 큐에 들어가 있다. 먼저 끊으면 도구 결과가 메시지보다 먼저 돌아가 다음 전달 시점까지 밀린다.
+    if (isUserSteering(e)) cutMainLoopWaits()
+    return r
   }).catch(($, e, next) => next(e))
 
   on('prompt.attachment', async ($, e, next) => {
