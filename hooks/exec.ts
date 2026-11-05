@@ -50,6 +50,38 @@ export const noteActivity = () => {
 const reportedTasks = new Set<string>()
 let nextRunId = 1
 
+// 엔진은 턴 도중 사용자가 보낸 메시지를 도구 결과가 돌아올 때만 모델에 건넨다. exec·poll 이 붙잡고 있으면 그만큼 늦게 읽는다.
+const mainLoopWaits = new Set<AbortController>()
+
+export const USER_MESSAGE_CUT_NOTE =
+  '[j-cc] Returned early because the user sent a message: read it and adjust before going on. The command was not stopped.'
+
+export type WaitHandle = { signal: AbortSignal; cutByUser: () => boolean; release: () => void }
+
+// 서브에이전트의 대기는 사용자 메시지를 받는 쪽이 아니므로 끊지 않는다.
+export function holdWait(agentId: string | undefined, engineSignal: AbortSignal): WaitHandle {
+  const controller = new AbortController()
+  const forwardAbort = () => controller.abort()
+  if (engineSignal.aborted) controller.abort()
+  else engineSignal.addEventListener('abort', forwardAbort, { once: true })
+  if (agentId === undefined) mainLoopWaits.add(controller)
+  return {
+    signal: controller.signal,
+    cutByUser: () => controller.signal.aborted && !engineSignal.aborted,
+    release: () => {
+      mainLoopWaits.delete(controller)
+      engineSignal.removeEventListener('abort', forwardAbort)
+    },
+  }
+}
+
+export function cutMainLoopWaits(): number {
+  const count = mainLoopWaits.size
+  for (const controller of mainLoopWaits) controller.abort()
+  mainLoopWaits.clear()
+  return count
+}
+
 export const shellToolName = (shell: Shell) => (shell === 'powershell' ? 'PowerShell' : 'Bash')
 
 // 실패 원인은 보통 끝에 찍히므로 꼬리를 더 남긴다.
@@ -242,6 +274,20 @@ async function waitWithinBudget($: EngineInterface, run: Run, waitMs: number, bu
   return text
 }
 
+type WaitContext = { signal: AbortSignal; budget: { remainingMs: number } }
+
+async function waitAndReport($: EngineInterface, run: Run, waitMs: number, agentId: string | undefined, next: WaitContext, maxOutputChars: unknown) {
+  const wait = holdWait(agentId, next.signal)
+  try {
+    const text = await waitForTask($, run, waitMs, next.budget.remainingMs, wait.signal)
+    markReported(run)
+    const report = takeReport(run, text, await $.clock.now(), maxOutputChars)
+    return { result: wait.cutByUser() && !isDone(run) ? `${report}\n${USER_MESSAGE_CUT_NOTE}` : report }
+  } finally {
+    wait.release()
+  }
+}
+
 // session.start 훅은 모듈에 하나만 둘 수 있어, register 의 session.start 에서 부른다.
 const CMD_DESCRIPTION = 'The command to run.'
 const CMD_DESCRIPTION_NO_CHAINING =
@@ -325,9 +371,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
 
     const run: Run = { id: nextRunId++, command, startedAtMs, ...task, reportedChars: 0 }
     runs.set(run.id, run)
-    const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), next.budget.remainingMs, next.signal)
-    markReported(run)
-    return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
+    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), (e as { agentId?: string }).agentId, next, args.max_output_chars)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc exec failed before the command started.' }))
 
   on('tool.call', { tool: POLL_TOOL }, async ($, e, next) => {
@@ -345,9 +389,8 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
       if (!parseTaskOutput(text).exit) run.failure = 'terminated by poll'
       return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
     }
-    if (isIdlePoll(run, (e as { agentId?: string }).agentId)) return { deny: IDLE_POLL_DENIAL }
-    const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS), next.budget.remainingMs, next.signal)
-    markReported(run)
-    return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
+    const agentId = (e as { agentId?: string }).agentId
+    if (isIdlePoll(run, agentId)) return { deny: IDLE_POLL_DENIAL }
+    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS), agentId, next, args.max_output_chars)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc poll failed.' }))
 }
