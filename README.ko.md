@@ -55,7 +55,7 @@ j-cc는 포그라운드 Bash·PowerShell 호출을 막고, Claude가 이 두 도
 | 도구 | 하는 일 |
 |---|---|
 | `exec` | 명령어를 백그라운드로 실행하고 **최대 30초**(기본 10초) 안에 돌아옵니다. 그 안에 끝나면 종료 코드와 출력을, 아직 실행 중이면 그때까지의 출력과 `session_id`를 줍니다. 명령어가 끝나면 알림이 옵니다. |
-| `poll` | 실행 중인 명령어의 출력을 **최대 5분**까지 기다리고, 명령어가 끝나면 바로 돌아옵니다. `terminate: true`로 멈출 수 있고, `session_id` 없이 부르면 실행 중인 명령어 목록을 보여 줍니다. |
+| `poll` | 실행 중인 명령어의 출력을 최소 5초, **최대 5분**까지 기다리고, 명령어가 끝나면 바로 돌아옵니다. `terminate: true`로 멈출 수 있고, `session_id` 없이 부르면 실행 중인 명령어 목록을 보여 줍니다. |
 
 **예: 3분 걸리는 테스트**
 
@@ -126,7 +126,7 @@ grep -c MAGIC app.exe # j-cc:allow: Grep 도구는 바이너리 파일 안을 �
 | 영역 | 내용 |
 |---|---|
 | 파일은 전용 도구로 | 명령어로 파일을 보기·검색·쓰기·수정하는 호출을 막고 Read, Grep, Glob, Write, Edit로 안내합니다. |
-| 명령어는 exec로 | 포그라운드 Bash·PowerShell 호출을 막고 `mcp__j-cc__exec`로 안내합니다. exec는 명령어를 Bash·PowerShell 백그라운드 작업으로 넘기고, 명령어가 끝나거나 `yield_time_ms`(기본 10초, 최대 30초)가 지나면 그때까지 나온 출력을 돌려줍니다. 끝나지 않은 명령어는 계속 실행되고, 끝나면 완료 알림이 옵니다. `mcp__j-cc__poll`은 출력을 더 기다리거나(최대 5분) `terminate: true`로 작업을 멈춥니다. 직전 보고 뒤로 다른 작업 없이 부른 poll은 거절합니다. 동시에 실행할 수 있는 명령어는 16개까지입니다. `run_in_background: true`인 Bash·PowerShell은 그대로 실행합니다. |
+| 명령어는 exec로 | 포그라운드 Bash·PowerShell 호출을 막고 `mcp__j-cc__exec`로 안내합니다. exec는 명령어를 Bash·PowerShell 백그라운드 작업으로 넘기고, 명령어가 끝나거나 `yield_time_ms`(기본 10초, 최대 30초)가 지나면 그때까지 나온 출력을 돌려줍니다. 끝나지 않은 명령어는 계속 실행되고, 끝나면 완료 알림이 옵니다. `mcp__j-cc__poll`은 출력을 더 기다리거나(최소 5초, 최대 5분) `terminate: true`로 작업을 멈춥니다. 직전 보고 뒤로 다른 작업 없이 부른 poll은 거절합니다. 동시에 실행할 수 있는 명령어는 16개까지입니다. `run_in_background: true`인 Bash·PowerShell은 그대로 실행합니다. |
 | 무한루프 차단 | `tail -f`, `watch`, `logs -f` 같은 스트림 따라가기, 무한 루프, 반복마다 1분 이상 쉬는 루프를 막고 Monitor, `/loop`, `CronCreate`로 안내합니다. Bash·PowerShell의 `run_in_background` 명령어 중 규칙으로 판단하지 못했고 루프·대기·서버 단서가 있는 명령어는 CC 내부 모델(Haiku)이 판정하고, `endless`로 판정하면 막습니다(`modelJudge`). exec가 없는 서브에이전트의 포그라운드 셸에서는 dev 서버, 폴링 루프, 5초 이상 대기도 막습니다. |
 | 명령어 체이닝 | 기본으로는 막지 않습니다. `blockChaining`을 켜면 따옴표 밖의 `&&`, `\|\|`, `;`로 이은 호출을 막습니다. |
 | 프롬프트 보강 | 시스템 프롬프트에 세 섹션을 추가합니다. `# User workflow first`는 CLAUDE.md 우선, 스킬 먼저 확인, 완료 보고 전에 가장 좁은 검사 실행을 안내합니다. `# Tool routing`은 필요한 도구가 없으면 셸보다 ToolSearch로 먼저 찾게 하고, `# Shell commands (j-cc)`는 exec 사용법을 알려 줍니다. 스킬 목록 머리말에는 "작업 전에 목록과 대조해 맞는 스킬을 먼저 부르고, 키워드만 겹치면 부르지 않는다"는 규칙을 넣습니다. Bash·PowerShell 설명 끝에는 위 차단 규칙을 적습니다. PowerShell은 ToolSearch 뒤로 미루고, Monitor는 처음부터 불러옵니다. |
