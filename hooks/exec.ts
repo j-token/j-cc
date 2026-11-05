@@ -208,6 +208,8 @@ async function tickerArgv($: EngineInterface, waitMs: number): Promise<string[]>
 async function waitForTask($: EngineInterface, run: Run, waitMs: number, budgetMs: number, signal: AbortSignal): Promise<string> {
   let text = await readTaskOutput($, run)
   if (parseTaskOutput(text).exit || waitMs <= 0) return text
+  // tick 은 sleep 프로세스를 띄우는 비용만큼 늦어져 Git Bash 에서 30초가 33초를 넘긴다. 그래서 tick 수가 아니라 마감 시각으로 멈춘다.
+  const deadline = (await $.clock.now()) + waitMs
   const ticker = $.process.spawn({ argv: await tickerArgv($, waitMs) })
   const stop = () => void ticker.return(undefined as never).catch(() => undefined)
   signal.addEventListener('abort', stop, { once: true })
@@ -218,7 +220,7 @@ async function waitForTask($: EngineInterface, run: Run, waitMs: number, budgetM
       if (step.done || signal.aborted) break
       ticked = true
       text = await readTaskOutput($, run)
-      if (parseTaskOutput(text).exit) break
+      if (parseTaskOutput(text).exit || (await $.clock.now()) >= deadline) break
     }
   } catch {
     // tick 프로세스를 띄우지 못하면 아래에서 예산 안에서만 기다린다.
