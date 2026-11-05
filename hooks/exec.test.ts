@@ -3,6 +3,7 @@ import {
   EXEC_TOOL,
   MAX_EXEC_YIELD_MS,
   MAX_POLL_YIELD_MS,
+  MIN_POLL_YIELD_MS,
   POLL_TOOL,
   budgetedYieldMs,
   clip,
@@ -31,6 +32,12 @@ test('대기 시간은 기본 10초이고 exec 은 30초, poll 은 5분을 넘�
   expect(yieldMs(-1, MAX_EXEC_YIELD_MS)).toBe(10_000)
   expect(yieldMs(60_000, MAX_EXEC_YIELD_MS)).toBe(30_000)
   expect(yieldMs(600_000, MAX_POLL_YIELD_MS)).toBe(300_000)
+})
+
+test('poll 은 짧은 대기를 요청해도 5초는 기다린다', () => {
+  expect(yieldMs(500, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS)).toBe(5_000)
+  expect(yieldMs(0, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS)).toBe(5_000)
+  expect(yieldMs(60_000, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS)).toBe(60_000)
 })
 
 test('tick 프로세스 없이 기다릴 때는 8초와 남은 훅 예산을 넘지 않는다', () => {

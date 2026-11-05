@@ -19,7 +19,7 @@ export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
 export const ROUTING = `# Tool routing
 - Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.
-- Shell commands: mcp__j-cc__exec (shell "bash" or "powershell"); foreground Bash and PowerShell calls are blocked. exec returns within 30s; a command still running then moves to the background and you are notified when it exits, so go on with other work. Use mcp__j-cc__poll only when you need its output sooner, waiting longer per call rather than calling it often. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
+- Shell commands: mcp__j-cc__exec (shell "bash" or "powershell"); foreground Bash and PowerShell calls are blocked. exec returns within 30s; a command still running then moves to the background and you are notified when it exits, so go on with other work. Use mcp__j-cc__poll only when you need its output sooner, waiting longer per call rather than calling it often. Rely on the completion notice first; do not put a fixed sleep (sleep 20 && ...) before a command to guess when something will be ready. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
 - A tool you need is not in your tool list (web, browser, MCP server, scheduling, notebooks): search for it with ToolSearch before falling back to the shell. Deferred tools are listed by name only; load them with ToolSearch "select:<name>".
 - Run the narrowest check first. Issue independent lookups in one message.
 - Web pages: WebFetch. Library docs: context7. GitHub: gh.`
@@ -32,7 +32,8 @@ export const SUBAGENT_RULES = `Subagent (started by the Agent tool):
 export const SHELL_COMMANDS = `# Shell commands (j-cc)
 - Run commands with mcp__j-cc__exec (shell "bash" or "powershell"). j-cc blocks foreground Bash and PowerShell calls.
 - exec returns within yield_time_ms (at most 30s). A command still running then keeps running in the background, like Bash run_in_background: you get its output so far and a session_id, and you are notified when it exits. Go on with independent work; do not start a step that depends on it until the notification arrives.
-- Call mcp__j-cc__poll only when you need the output before then, with a yield_time_ms that fits how long you expect it to take (up to 300000), not a short one over and over. Follow a log with Monitor.
+- Call mcp__j-cc__poll only when you need the output before then, with a yield_time_ms that fits how long you expect it to take (5000 to 300000), not a short one over and over. Follow a log with Monitor.
+- Rely on completion notices first. Do not add a fixed sleep (sleep 20 && ...) to guess when something will be ready; wait on the real condition with Monitor or a command that exits when it is met.
 - No new output and no exit where you expected one usually means the command is waiting for input (an unclosed heredoc or quote, a prompt) or is stuck: terminate it and fix the command.
 - Bash or PowerShell with run_in_background: true is still allowed.
 - A \`# j-cc:allow:\` comment only lifts the rule that blocked a command; it does not allow foreground Bash.

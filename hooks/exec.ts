@@ -13,6 +13,8 @@ export const POLL_TOOL = 'mcp__j-cc__poll'
 export const DEFAULT_YIELD_MS = 10_000
 export const MAX_EXEC_YIELD_MS = 30_000
 export const MAX_POLL_YIELD_MS = 300_000
+// Codex 의 MIN_EMPTY_YIELD_TIME_MS 와 같은 값이다. 짧은 poll 을 되풀이해 고정 sleep 처럼 쓰지 못하게 한다. 명령이 끝나면 그 전에 돌아온다.
+export const MIN_POLL_YIELD_MS = 5_000
 // tick 프로세스를 띄우지 못했을 때의 상한. tool.call 훅의 예산은 10초이고 $.clock.sleep 은 예산을 쓴다.
 export const MAX_BUDGETED_YIELD_MS = 8_000
 const BUDGET_RESERVE_MS = 1_500
@@ -112,9 +114,9 @@ export function isIdlePoll(run: Pick<Run, 'reportedAtActivity'>, agentId: string
   return agentId === undefined && run.reportedAtActivity === activity
 }
 
-export function yieldMs(requested: unknown, maxMs: number): number {
+export function yieldMs(requested: unknown, maxMs: number, minMs = 0): number {
   const wanted = typeof requested === 'number' && requested >= 0 ? requested : DEFAULT_YIELD_MS
-  return Math.min(wanted, maxMs)
+  return Math.min(Math.max(wanted, minMs), maxMs)
 }
 
 export function budgetedYieldMs(wantedMs: number, remainingBudgetMs: number): number {
@@ -172,7 +174,7 @@ export const EXEC_DESCRIPTION = [
   'The same permission rules and sandbox as the Bash and PowerShell tools apply.',
 ].join(' ')
 
-export const POLL_DESCRIPTION = `Wait for new output from a command exec left running, up to yield_time_ms (default ${DEFAULT_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}); it returns as soon as the command exits. It refuses a poll sent with no other tool call since exec or poll last reported that command. terminate: true stops it. Omit session_id to list running commands.`
+export const POLL_DESCRIPTION = `Wait for new output from a command exec left running, up to yield_time_ms (default ${DEFAULT_YIELD_MS}, at least ${MIN_POLL_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}); it returns as soon as the command exits. It refuses a poll sent with no other tool call since exec or poll last reported that command. terminate: true stops it. Omit session_id to list running commands.`
 
 type ExecArgs = { cmd?: unknown; shell?: unknown; cwd?: unknown; yield_time_ms?: unknown; max_output_chars?: unknown }
 type PollArgs = { session_id?: unknown; yield_time_ms?: unknown; terminate?: unknown; max_output_chars?: unknown }
@@ -206,6 +208,8 @@ async function tickerArgv($: EngineInterface, waitMs: number): Promise<string[]>
 async function waitForTask($: EngineInterface, run: Run, waitMs: number, budgetMs: number, signal: AbortSignal): Promise<string> {
   let text = await readTaskOutput($, run)
   if (parseTaskOutput(text).exit || waitMs <= 0) return text
+  // tick 은 sleep 프로세스를 띄우는 비용만큼 늦어져 Git Bash 에서 30초가 33초를 넘긴다. 그래서 tick 수가 아니라 마감 시각으로 멈춘다.
+  const deadline = (await $.clock.now()) + waitMs
   const ticker = $.process.spawn({ argv: await tickerArgv($, waitMs) })
   const stop = () => void ticker.return(undefined as never).catch(() => undefined)
   signal.addEventListener('abort', stop, { once: true })
@@ -216,7 +220,7 @@ async function waitForTask($: EngineInterface, run: Run, waitMs: number, budgetM
       if (step.done || signal.aborted) break
       ticked = true
       text = await readTaskOutput($, run)
-      if (parseTaskOutput(text).exit) break
+      if (parseTaskOutput(text).exit || (await $.clock.now()) >= deadline) break
     }
   } catch {
     // tick 프로세스를 띄우지 못하면 아래에서 예산 안에서만 기다린다.
@@ -259,7 +263,7 @@ export async function registerExecTools($: EngineInterface, { blockChaining = tr
     type: 'object',
     properties: {
       session_id: { type: 'number', description: 'The session_id exec returned.' },
-      yield_time_ms: { type: 'number', description: `How long to wait; default ${DEFAULT_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}.` },
+      yield_time_ms: { type: 'number', description: `How long to wait; default ${DEFAULT_YIELD_MS}, at least ${MIN_POLL_YIELD_MS}, at most ${MAX_POLL_YIELD_MS}.` },
       terminate: { type: 'boolean', description: 'Stop the command.' },
       max_output_chars: { type: 'number', description: `Output budget; default ${DEFAULT_MAX_OUTPUT_CHARS}.` },
     },
@@ -342,7 +346,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
       return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
     }
     if (isIdlePoll(run, (e as { agentId?: string }).agentId)) return { deny: IDLE_POLL_DENIAL }
-    const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_POLL_YIELD_MS), next.budget.remainingMs, next.signal)
+    const text = await waitForTask($, run, yieldMs(args.yield_time_ms, MAX_POLL_YIELD_MS, MIN_POLL_YIELD_MS), next.budget.remainingMs, next.signal)
     markReported(run)
     return { result: takeReport(run, text, await $.clock.now(), args.max_output_chars) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc poll failed.' }))
