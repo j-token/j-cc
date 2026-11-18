@@ -204,6 +204,20 @@ type ExecArgs = { cmd?: unknown; shell?: unknown; cwd?: unknown; yield_time_ms?:
 type PollArgs = { session_id?: unknown; yield_time_ms?: unknown; terminate?: unknown; max_output_chars?: unknown }
 
 const shellOf = (args: ExecArgs): Shell => (args.shell === 'powershell' ? 'powershell' : 'bash')
+const commandOf = (args: ExecArgs): string => (typeof args.cmd === 'string' ? args.cmd : '')
+
+export const unwatchedRunNote = (id: number) =>
+  `Process running in the background with session_id ${id}. j-cc could not wait for its output: poll this session_id, or wait for the notice when it exits.`
+
+// exec 은 기다리지 않고 돌아오므로 백그라운드 실행처럼 판정한다. 파일 보기·검색·수정과 끝없는 루프는 그대로 막는다.
+async function refusalBeforeRun($: EngineInterface, args: ExecArgs, screenOptions: ScreenOptions): Promise<string | null> {
+  const command = commandOf(args)
+  if (!command.trim()) return 'cmd is required.'
+  const screened = await screen($, command, shellOf(args), true, screenOptions)
+  if ('deny' in screened) return screened.deny
+  const running = [...runs.values()].filter(run => !isDone(run)).length
+  return running >= MAX_RUNNING ? `${running} commands are still running; poll or terminate some first.` : null
+}
 
 // $ 를 받는 함수는 엔진이 import 너머로 따라갈 수 있게 최상위 function 선언으로 둔다.
 async function bashPath($: EngineInterface): Promise<string | null> {
@@ -319,8 +333,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const own = await next(e)
     if (own.decision === 'deny') return own
     const args = (e.input ?? {}) as ExecArgs
-    const command = typeof args.cmd === 'string' ? args.cmd : ''
-    const shellVerdict = await $.tool.check({ tool: shellToolName(shellOf(args)), input: { command } })
+    const shellVerdict = await $.tool.check({ tool: shellToolName(shellOf(args)), input: { command: commandOf(args) } })
     // 훅이 돌려준 ask 는 사람만 답할 수 있어, auto 분류기의 허용도 "항상 허용" 규칙도 듣지 않고 매번 묻는다.
     // 같은 명령의 셸 판정이 ask 이면 엔진이 exec 에 내린 판정을 받은 그대로 넘겨, 묻는 일을 모드의 결정자에게 맡긴다.
     // 그러면 auto 분류기는 모델이 실제로 낸 exec 호출을 판정한다.
@@ -333,24 +346,20 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     return own.decision === 'deny' ? own : { decision: 'allow' as const }
   }).catch(($, e, next) => next(e))
 
-  // 권한 확인 전에 거를 것만 거르고 next(e) 로 넘긴다. tool.call 에서 답하면 권한 확인을 건너뛴다.
+  // 승인을 묻기 전에 막을 명령은 여기서 막는다. tool.call 에서 답하면 권한 확인을 건너뛰므로 통과하면 next(e) 로 넘긴다.
   on('tool.call', { tool: EXEC_TOOL }, async ($, e, next) => {
-    const args = e as unknown as ExecArgs
-    const command = typeof args.cmd === 'string' ? args.cmd : ''
-    if (!command.trim()) return { deny: 'cmd is required.' }
-    // exec 은 기다리지 않고 돌아오므로 백그라운드 실행처럼 판정한다. 파일 보기·검색·수정과 끝없는 루프는 그대로 막는다.
-    const screened = await screen($, command, shellOf(args), true, screenOptions)
-    if ('deny' in screened) return { deny: screened.deny }
-
-    const running = [...runs.values()].filter(run => !isDone(run)).length
-    if (running >= MAX_RUNNING) return { deny: `${running} commands are still running; poll or terminate some first.` }
-    return next(e)
+    const refusal = await refusalBeforeRun($, e as unknown as ExecArgs, screenOptions)
+    return refusal ? { deny: refusal } : next(e)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc exec failed before the command started.' }))
 
   // tool.run 은 위의 tool.check 판정과 대화상자나 auto 분류기의 승인을 거쳐 허용된 호출에만 불린다(Claude Code 2.1.326부터).
+  // PreToolUse 훅이나 승인 단계가 tool.call 뒤에 입력을 바꿀 수 있어 다시 거른다.
   on('tool.run', { tool: EXEC_TOOL }, async ($, e, next) => {
     const args = e as unknown as ExecArgs
-    const command = typeof args.cmd === 'string' ? args.cmd : ''
+    const refusal = await refusalBeforeRun($, args, screenOptions)
+    if (refusal) return { deny: refusal }
+
+    const command = commandOf(args)
     const shell = shellOf(args)
     const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
     const startedAtMs = await $.clock.now()
@@ -367,8 +376,11 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
 
     const run: Run = { id: nextRunId++, command, startedAtMs, ...task, reportedChars: 0 }
     runs.set(run.id, run)
-    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), (e as { agentId?: string }).agentId, next, args.max_output_chars)
-  }).catch(() => ({ deny: 'j-cc exec failed. If the command started, poll without session_id lists it.' }))
+    // 명령은 이미 돌고 있다. 기다리다 실패했다고 거부하면 모델이 같은 명령을 다시 실행한다.
+    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), (e as { agentId?: string }).agentId, next, args.max_output_chars).catch(() => ({
+      result: unwatchedRunNote(run.id),
+    }))
+  }).catch(() => ({ deny: 'j-cc exec failed before it could report a session_id; the command may not have started.' }))
 
   on('tool.call', { tool: POLL_TOOL }, async ($, e, next) => {
     const args = e as unknown as PollArgs

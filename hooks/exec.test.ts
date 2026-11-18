@@ -185,6 +185,47 @@ test('허용된 exec은 명령을 백그라운드 Bash로 맡기고 끝난 출�
   expect(JSON.stringify(r)).toContain('built')
 })
 
+test('PreToolUse 훅이 입력을 파일 보기 명령으로 바꾸면 tool.run에서 다시 걸러 실행하지 않는다', async ($, on) => {
+  on('env.get', () => ({ value: undefined }))
+  on('classic.PreToolUse' as never, (() => ({ updatedInput: { cmd: 'cat src/app.ts' } })) as never)
+  on('tool.check', () => ({ decision: 'allow' }))
+  const launched: string[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => {
+    launched.push(String(e.command))
+    return { result: { backgroundTaskId: 'task-10' }, text: 'Output is being written to: C:/Temp/tasks/task-10.output' } as never
+  })
+
+  const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'npm run build' } as never)
+
+  expect(launched).toEqual([])
+  expect(JSON.stringify(r)).toContain('[j-cc] Blocked (view)')
+})
+
+test('명령을 시작한 뒤 기다리다 실패하면 거부하지 않고 session_id를 알려 poll로 이어 볼 수 있게 한다', async ($, on) => {
+  on('env.get', () => ({ value: undefined }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  const launched: string[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => {
+    launched.push(String(e.command))
+    return { result: { backgroundTaskId: 'task-11' }, text: 'Output is being written to: C:/Temp/tasks/task-11.output' } as never
+  })
+  on('fs.read', () => ({ value: 'compiling\n' }) as never)
+  let clockCalls = 0
+  on('clock.now', () => {
+    clockCalls += 1
+    if (clockCalls > 1) throw new Error('clock unavailable')
+    return { value: 1_000 } as never
+  })
+
+  const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'npm run long-build' } as never)
+  const listing = await $.tool.call({ tool: POLL_TOOL } as never)
+
+  expect(launched).toEqual(['npm run long-build'])
+  expect(JSON.stringify(r)).toContain('Process running in the background with session_id')
+  expect(JSON.stringify(r)).not.toContain('deny')
+  expect(JSON.stringify(listing)).toContain('npm run long-build')
+})
+
 test('메인 루프가 보고 뒤 다른 일 없이 부른 poll만 쉬는 poll로 본다', () => {
   const run = fakeRun({})
   markReported(run)
