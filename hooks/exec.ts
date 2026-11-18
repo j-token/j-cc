@@ -345,7 +345,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const running = [...runs.values()].filter(run => !isDone(run)).length
     if (running >= MAX_RUNNING) return { deny: `${running} commands are still running; poll or terminate some first.` }
     return next(e)
-  }).catch(($, e, next) => ({ deny: next.called ? 'j-cc exec failed.' : 'j-cc exec failed before the command started.' }))
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc exec failed before the command started.' }))
 
   // tool.run 은 위의 tool.check 판정과 대화상자나 auto 분류기의 승인을 거쳐 허용된 호출에만 불린다(Claude Code 2.1.326부터).
   on('tool.run', { tool: EXEC_TOOL }, async ($, e, next) => {
