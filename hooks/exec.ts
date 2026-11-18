@@ -156,14 +156,6 @@ export function budgetedYieldMs(wantedMs: number, remainingBudgetMs: number): nu
   return Math.max(0, Math.min(wantedMs, MAX_BUDGETED_YIELD_MS, budget))
 }
 
-// 권한을 통과하면 엔진은 이 도구를 실행할 처리기를 찾다가 이 문구의 오류를 낸다(Claude Code 2.1.316).
-// 그 밖의 결과는 거부로 보고 실행하지 않는다. 문구가 바뀌면 exec 가 실행되지 않을 뿐, 권한을 건너뛰지는 않는다.
-const UNANSWERED_CALL = 'no tool.call hook answered this call'
-
-export function passedPermission(gate: { deny?: string; isError?: boolean; text?: string }): boolean {
-  return gate.deny === undefined && gate.isError === true && (gate.text ?? '').includes(UNANSWERED_CALL)
-}
-
 // auto 모드에서 훅이 Bash 판정을 따로 물으면, 서버 분류기는 모델이 낸 적 없는 Bash 행동이라 판정하지 않고 이 문구로 거부한다.
 // 이 거부는 명령에 대한 판단이 아니므로 ask 처럼 다룬다. 문구가 바뀌면 거부가 그대로 남을 뿐, 권한을 건너뛰지는 않는다.
 const CLASSIFIER_NO_VERDICT = 'classifier gave no verdict'
@@ -341,21 +333,25 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     return own.decision === 'deny' ? own : { decision: 'allow' as const }
   }).catch(($, e, next) => next(e))
 
+  // 권한 확인 전에 거를 것만 거르고 next(e) 로 넘긴다. tool.call 에서 답하면 권한 확인을 건너뛴다.
   on('tool.call', { tool: EXEC_TOOL }, async ($, e, next) => {
     const args = e as unknown as ExecArgs
     const command = typeof args.cmd === 'string' ? args.cmd : ''
     if (!command.trim()) return { deny: 'cmd is required.' }
-    const shell = shellOf(args)
     // exec 은 기다리지 않고 돌아오므로 백그라운드 실행처럼 판정한다. 파일 보기·검색·수정과 끝없는 루프는 그대로 막는다.
-    const screened = await screen($, command, shell, true, screenOptions)
+    const screened = await screen($, command, shellOf(args), true, screenOptions)
     if ('deny' in screened) return { deny: screened.deny }
 
     const running = [...runs.values()].filter(run => !isDone(run)).length
     if (running >= MAX_RUNNING) return { deny: `${running} commands are still running; poll or terminate some first.` }
-    // 권한 확인은 next(e) 안에서만 일어난다. 그 안에서 위의 tool.check 훅이 같은 명령의 Bash/PowerShell 판정을 내고, 대화상자나 auto 분류기가 묻는다.
-    const gate = await next(e)
-    if (!passedPermission(gate)) return gate
+    return next(e)
+  }).catch(($, e, next) => ({ deny: next.called ? 'j-cc exec failed.' : 'j-cc exec failed before the command started.' }))
 
+  // tool.run 은 위의 tool.check 판정과 대화상자나 auto 분류기의 승인을 거쳐 허용된 호출에만 불린다(Claude Code 2.1.326부터).
+  on('tool.run', { tool: EXEC_TOOL }, async ($, e, next) => {
+    const args = e as unknown as ExecArgs
+    const command = typeof args.cmd === 'string' ? args.cmd : ''
+    const shell = shellOf(args)
     const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
     const startedAtMs = await $.clock.now()
     // 훅이 부른 도구에는 이 플러그인의 훅이 다시 걸리지 않으므로, 포그라운드 셸 차단에 막히지 않는다.
@@ -372,7 +368,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const run: Run = { id: nextRunId++, command, startedAtMs, ...task, reportedChars: 0 }
     runs.set(run.id, run)
     return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), (e as { agentId?: string }).agentId, next, args.max_output_chars)
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc exec failed before the command started.' }))
+  }).catch(() => ({ deny: 'j-cc exec failed. If the command started, poll without session_id lists it.' }))
 
   on('tool.call', { tool: POLL_TOOL }, async ($, e, next) => {
     const args = e as unknown as PollArgs

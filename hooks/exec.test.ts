@@ -16,7 +16,6 @@ import {
   noteActivity,
   noticeTaskId,
   parseTaskOutput,
-  passedPermission,
   quoteCwd,
   statusLine,
   takeReport,
@@ -152,14 +151,38 @@ test('종료까지 보고한 작업의 알림만 이미 보고한 알림으로 �
   expect(isReportedTaskNotice('The user sent a new message.')).toBe(false)
 })
 
-test('권한을 통과해 처리기를 찾지 못한 결과일 때만 명령을 실행한다', () => {
-  const unanswered = 'j-cc registered the tool exec but no tool.call hook answered this call: add on("tool.call", ...) to the plugin.'
-  const refused = "Permission to use mcp__j-cc__exec denied by plugin j-cc: mkdir in '/tmp/x' needs approval."
+test('같은 명령의 셸 판정이 거부면 exec은 명령을 실행하지 않는다', async ($, on) => {
+  on('env.get', () => ({ value: undefined }))
+  on('tool.check', ($, e, next) => (e.tool === 'Bash' ? { decision: 'deny', reason: 'outside the project' } : next(e)))
+  const launched: string[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => {
+    launched.push(String(e.command))
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
 
-  expect(passedPermission({ isError: true, text: unanswered })).toBe(true)
-  expect(passedPermission({ isError: true, text: refused })).toBe(false)
-  expect(passedPermission({ deny: 'blocked' })).toBe(false)
-  expect(passedPermission({ text: 'ok' })).toBe(false)
+  const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'npm run build' } as never)
+
+  expect(launched).toEqual([])
+  expect(JSON.stringify(r)).toContain('outside the project')
+})
+
+test('허용된 exec은 명령을 백그라운드 Bash로 맡기고 끝난 출력을 돌려준다', async ($, on) => {
+  on('env.get', () => ({ value: undefined }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  const launched: unknown[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => {
+    launched.push(e.run_in_background)
+    return { result: { backgroundTaskId: 'task-9' }, text: 'Output is being written to: C:/Temp/tasks/task-9.output' } as never
+  })
+  on('fs.read', () => ({ value: 'built\n\n[exited with code 0]\n' }) as never)
+  let nowMs = 0
+  on('clock.now', () => ({ value: (nowMs += 1_000) }) as never)
+
+  const r = await $.tool.call({ tool: EXEC_TOOL, cmd: 'npm run build' } as never)
+
+  expect(launched).toEqual([true])
+  expect(JSON.stringify(r)).toContain('Process exited with code 0')
+  expect(JSON.stringify(r)).toContain('built')
 })
 
 test('메인 루프가 보고 뒤 다른 일 없이 부른 poll만 쉬는 poll로 본다', () => {

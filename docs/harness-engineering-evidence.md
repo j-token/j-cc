@@ -212,6 +212,8 @@ Codex(`openai/codex`의 codex-rs)에서는 이런 문제가 없다. `exec_comman
 
 디버그 로그에 j-cc 훅을 건너뛰었다는 기록은 없었다. 매 exec 호출마다 남는 "no tool.call hook answered this call"은 권한 관문이 의도대로 내는 기록이다.
 
+> 2.1.326부터 이 문구가 "no hook answered this call: add on(\"tool.run\", ...)"으로 바뀌어, 문구로 권한 통과를 알아보던 exec가 모든 호출을 거부했다. 0.11.0부터 exec는 허용된 호출에만 불리는 `tool.run` 훅에서 명령을 실행하고, 오류 문구에 기대지 않는다.
+
 **아직 확인하지 않은 것.**
 - 실제 샌드박스를 켠 상태(작업 폴더 밖 쓰기가 막히는지). `claude sandbox install`과 Windows 샌드박스 플래그가 필요하다.
 - settings.json의 `Bash`/`PowerShell` PreToolUse 훅이 안쪽 호출에 걸리는지.
