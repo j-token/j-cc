@@ -77,7 +77,7 @@ Read / Edit ...          → meanwhile, read and edit other files
 /plugin install j-cc@j-cc
 ```
 
-Requires Claude Code 2.1.301 or later (hooks module API).
+Requires Claude Code 2.1.326 or later (the hooks module API's `tool.run`). On older versions exec does not run.
 
 j-cc is a tool that helps the workflow; it is **not a security boundary.**
 

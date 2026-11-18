@@ -77,7 +77,7 @@ Read / Edit ...       → 그동안 다른 파일을 읽고 고침
 /plugin install j-cc@j-cc
 ```
 
-Claude Code 2.1.301 이상이 필요합니다(hooks module API).
+Claude Code 2.1.326 이상이 필요합니다(hooks module API의 `tool.run`). 그보다 낮은 버전에서는 exec가 실행되지 않습니다.
 
 j-cc는 작업 흐름을 돕는 도구이고 **보안 경계가 아닙니다.**
 
