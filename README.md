@@ -150,6 +150,7 @@ grep -c MAGIC app.exe # j-cc:allow: the Grep tool does not search inside binary 
 - A chain of a file view and another command (`head f && wc -l f`) is not caught by the file-view rule. That rule only denies a call made entirely of viewing and searching.
 - exec's permission follows the Bash/PowerShell verdict for the same command. When that verdict is `ask`, or the call was denied because auto mode's classifier gave no Bash verdict, the engine's own verdict for exec is used as is. So in auto mode the classifier decides, and choosing "always allow" in default mode leaves that rule in place. Adding all of exec to an allow rule also runs, without asking, commands Bash would have asked about.
 - The Bash call exec makes is not checked for permission again. exec's own check, which follows the Bash/PowerShell verdict for the same command, is the only gate. Other plugins' Bash hooks apply to this call too. Whether `Bash`/`PowerShell` PreToolUse hooks in settings.json apply has not been checked. Commands run with stdin closed, so interactive prompts cannot be used.
+- j-cc does not work together with [Code Mode](https://code.claude.com/docs/en/code-mode). Code Mode does not turn on while a mod that checks tool calls is installed, and j-cc works through `tool.call` hooks. Starting with j-cc on and `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` opens the session with the ordinary tools and no Code Mode (checked on 2.1.325). To use Code Mode, turn j-cc off.
 
 </details>
 
