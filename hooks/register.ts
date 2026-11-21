@@ -18,6 +18,7 @@ import {
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
+import { TIME_SECTION, isTimeNoteDue, promptTimeNote, toolTimeNote } from './time'
 
 async function gatherEvidence($: EngineInterface, command: string, shell: Shell): Promise<Evidence> {
   const sources: Evidence['sources'] = []
@@ -102,6 +103,25 @@ async function configuredLanguage($: EngineInterface): Promise<unknown> {
   }
 }
 
+// 도구가 실행된 뒤에도 부르므로 configuredLanguage 처럼 던지지 않는다.
+async function readClock($: EngineInterface): Promise<number | null> {
+  try {
+    return await $.clock.now()
+  } catch {
+    return null
+  }
+}
+
+let lastTimeNoteAtMs: number | null = null
+let lastUserMessageAtMs: number | null = null
+
+// 병렬 도구 호출 중 하나에만 붙도록, 시각을 읽은 뒤 await 없이 확인과 기록을 한 번에 한다.
+function claimToolTimeNote(nowMs: number | null): string | null {
+  if (nowMs === null || !isTimeNoteDue(nowMs, lastTimeNoteAtMs)) return null
+  lastTimeNoteAtMs = nowMs
+  return toolTimeNote(nowMs, lastUserMessageAtMs)
+}
+
 // 직전 응답 중 설정 언어가 아닐 수 있어 모델에게 물어볼 텍스트. 다음 메인 루프 도구 호출이 가져간다.
 let suspectAnswer: string | null = null
 // 턴을 끝낸 답변 뒤에는 도구 결과가 없어, 판정한 언어를 다음 프롬프트의 맥락으로 넘긴다.
@@ -172,6 +192,7 @@ export const register: Register = (on, options) => {
   // 체이닝은 켰을 때만 막는다. 막으면 해가 없는 `node -v; npm -v` 같은 조회도 호출 여러 번으로 쪼개진다.
   const screenOptions = { blockChaining: options.blockChaining === true, useModel }
   const subagentContext = subagentNote(screenOptions.blockChaining)
+  const timeAwareness = options.timeAwareness !== false
 
   // fork 는 부모의 맥락을 그대로 이어받으므로 건드리지 않는다.
   on('agent.spawn', async ($, e, next) => {
@@ -205,7 +226,9 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     const language = await drift
     if (r.deny !== undefined) return language ? { deny: `${r.deny}\n\n${driftWarning(language)}` } : r
-    const notes = [replyLanguageNote(await configuredLanguage($)), ...(language ? [driftWarning(language)] : [])]
+    // 시계는 도구가 돌아온 뒤에 읽는다. 모델이 결과를 읽는 시각에 가깝고, exec 이 재는 wall 시간을 건드리지 않는다.
+    const timeNote = timeAwareness && r.isError !== true ? claimToolTimeNote(await readClock($)) : null
+    const notes = [...(timeNote ? [timeNote] : []), replyLanguageNote(await configuredLanguage($)), ...(language ? [driftWarning(language)] : [])]
     return { ...r, context: [...(r.context ?? []), ...notes] }
   }).catch(($, e, next) => next(e))
 
@@ -223,8 +246,15 @@ export const register: Register = (on, options) => {
     if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
     const language = driftAtTurnEnd
     driftAtTurnEnd = null
+    const isFromUser = USER_ORIGINS.has(e.origin?.kind ?? '')
+    const nowMs = timeAwareness ? await readClock($) : null
+    if (nowMs !== null) {
+      lastTimeNoteAtMs = nowMs
+      if (isFromUser) lastUserMessageAtMs = nowMs
+    }
     const notes = [
-      ...(USER_ORIGINS.has(e.origin?.kind ?? '') ? [] : [replyLanguageNote(await configuredLanguage($))]),
+      ...(nowMs !== null ? [promptTimeNote(nowMs)] : []),
+      ...(isFromUser ? [] : [replyLanguageNote(await configuredLanguage($))]),
       ...(language ? [driftWarning(language)] : []),
     ]
     const r = await next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
@@ -309,6 +339,7 @@ export const register: Register = (on, options) => {
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
         { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
         { id: 'j-cc:shell-commands', text: SHELL_COMMANDS, scope: 'session' as const },
+        ...(timeAwareness ? [{ id: 'j-cc:time', text: TIME_SECTION, scope: 'session' as const }] : []),
       ],
     }
   }).catch(($, e, next) => next(e))

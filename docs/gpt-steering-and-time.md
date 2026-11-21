@@ -52,4 +52,18 @@
 - `elapsed_time_reminder`("Elapsed time so far: Xm YYs")는 엔진에 있지만 카탈로그의 어느 모델에도 켜져 있지 않다.
 - `per_turn_timing` API 베타는 `CLAUDE_CODE_PER_TURN_TIMING` 환경 변수가 있어야 켜진다.
 - Codex(openai/codex main)는 셸·도구 결과마다 `Wall time: N seconds`를 붙이고, `<current_date>`와 `<timezone>`을 환경 컨텍스트로 준다. 매 초 현재 시각을 주는 `<current_time_reminder>`는 기본으로 꺼진 실험 기능이다.
-- j-cc의 exec는 이미 `wall N.Ns`를 상태 줄에 넣는다. 다른 도구 결과에는 시간이 없다.
+- j-cc의 exec는 이미 `wall N.Ns`를 상태 줄에 넣는다.
+
+### 0.12.0: 시간 인식 추가 (2026-11-21)
+
+- 계기: OpenAI Agents API의 `experimental.time_awareness`("모델에 현재 시각을 주기적으로 알려 준다"). 글에는 시각 형식과 주기가 나오지 않는다.
+- 엔진의 `elapsed_time_reminder`는 카탈로그의 모든 모델에서 꺼져 있고, 켜려면 사용자 설정을 바꿔야 할 것으로 보여 쓰지 않고 훅으로 구현했다. ⚠️ 어떤 설정이 이 기능을 켜는지는 확인하지 않았다.
+- 사용자 메시지(`prompt.submit`)마다 현지 시각과 오프셋을 붙인다. 날짜가 대화 시작에 한 번만 실려, 쉬었다 돌아온 세션에서는 낡기 때문이다.
+- 도구 결과는 마지막 안내 뒤 60초가 지났을 때만 붙인다. 매번 붙이면 결과마다 토큰이 늘어난다. 병렬 호출 중 하나에만 붙도록 시계를 읽은 뒤 확인과 기록을 await 없이 한다.
+- 시계는 도구가 돌아온 뒤 읽는다. exec 테스트가 시계 읽기 횟수로 wall 시간을 재서, 앞에서 읽으면 값이 밀린다.
+- 시스템 프롬프트에는 시각 값을 넣지 않는다. 턴마다 바뀌어 프롬프트 캐시를 깬다. 사용법만 담은 고정 섹션 `# Time (j-cc)`를 넣는다.
+- 확인(`claude -p --plugin-dir`, Haiku):
+  - 프롬프트에 `+09:00` 시각과 `# Time (j-cc)` 섹션이 들어간 것을 모델이 그대로 인용했다.
+  - `sleep 70`을 exec로 돌린 세션에서 처음 60초 동안의 도구 결과에는 시각이 없었고, 그 뒤 poll 결과에 `Current time: …T15:11:19+09:00 (Saturday); 1m16s since the user's last message.`가 한 번 붙었다.
+  - 대화형 TUI, 턴 도중 보낸 메시지, 옵션을 끈 상태는 실제 엔진에서 확인하지 않았다.
+- 비동기 입력(사용자 답을 기다리며 계속 일하기)은 넣지 않았다. 턴 도중 보낸 메시지는 이미 다음 도구 결과와 함께 전달되고, exec·poll 대기도 끊는다(위 "exec·poll 대기 끊기 실험").

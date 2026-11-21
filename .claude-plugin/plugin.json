@@ -16,6 +16,12 @@
       "title": "Block command chaining",
       "description": "Block Bash, PowerShell and exec commands that chain with &&, || or ; outside quotes, so each command runs in its own call. Off by default: splitting harmless chains costs extra round trips.",
       "default": false
+    },
+    "timeAwareness": {
+      "type": "boolean",
+      "title": "Tell the model the current time",
+      "description": "Add the current local time to each user message and, about once a minute, to a tool result in the main session, so the model can plan against deadlines like \"in 15 minutes\".",
+      "default": true
     }
   }
 }
