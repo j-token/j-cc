@@ -43,13 +43,16 @@ ${SUBAGENT_RULES}`
 
 const SUBAGENT_FILE_RULE =
   '- Files: Read to view, Grep and Glob to search, Edit and Write to change them. Do not use cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs or echo > in the shell; j-cc blocks those calls.'
+// 서브에이전트 요청의 71%가 도구 하나만 부르고, 읽기 하나짜리 요청이 연달아 이어진 경우가 많았다(docs/usage-and-speed.md).
+const SUBAGENT_PARALLEL_RULE =
+  '- Send independent lookups (Read, Grep, Glob, exec) together as parallel calls in one message, not one per turn: each extra turn re-sends your whole context.'
 const SUBAGENT_CHAIN_RULE =
   '- Run one shell command per call: j-cc blocks `&&`, `||` and `;` outside quotes. Use absolute paths or `git -C <dir>` instead of `cd dir &&`.'
 
 // 서브에이전트는 메인의 시스템 프롬프트 섹션(# Tool routing 등)을 받는다는 보장이 없어, 같은 규칙을 짧게 따로 전한다.
 export function subagentNote(blockChaining: boolean): string {
   const shellRules = SUBAGENT_RULES.replace(/^Subagent \(started by the Agent tool\):\n/, '')
-  return ['[j-cc] Context for this subagent:', SUBAGENT_FILE_RULE, ...(blockChaining ? [SUBAGENT_CHAIN_RULE] : []), shellRules].join('\n')
+  return ['[j-cc] Context for this subagent:', SUBAGENT_FILE_RULE, SUBAGENT_PARALLEL_RULE, ...(blockChaining ? [SUBAGENT_CHAIN_RULE] : []), shellRules].join('\n')
 }
 
 export const WORKFLOW = `# User workflow first
