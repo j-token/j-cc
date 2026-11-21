@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, ToolCallResult } from 'claude-code'
 import { EXEC_TOOL, POLL_TOOL, cutMainLoopWaits, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
 import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
@@ -23,7 +23,9 @@ import {
   ASK_DESCRIPTION,
   ASK_SCHEMA,
   ASK_TOOL,
+  CHOICE_HINT,
   askedResult,
+  bandTitle,
   busyResult,
   expiryNote,
   isExpired,
@@ -138,12 +140,20 @@ function showStatus($: EngineInterface, text: string | undefined): void {
 let openQuestion: OpenQuestion | null = null
 let nextQuestionId = 1
 
+// 상태 줄은 긴 질문을 자르므로 전문은 입력창 위 띠가 openQuestion 을 읽어 그린다. 질문이 바뀔 때마다 띠도 다시 그린다.
+function showQuestion($: EngineInterface, text: string | undefined): void {
+  showStatus($, text)
+  try {
+    $.ui.invalidate('ui.render')
+  } catch {}
+}
+
 // 병렬 도구 호출 중 하나에만 붙도록 await 없이 확인과 기록을 한 번에 한다.
 function claimExpiryNote($: EngineInterface, nowMs: number | null): string | null {
   const q = openQuestion
   if (q === null || nowMs === null || q.isExpiryReported || !isExpired(q, nowMs)) return null
   q.isExpiryReported = true
-  showStatus($, `${statusLine(q)} [expired: Claude went on without it; a reply still reaches Claude]`)
+  showQuestion($, `${statusLine(q)} [expired: Claude went on without it; a reply still reaches Claude]`)
   return expiryNote(q)
 }
 
@@ -270,13 +280,29 @@ export const register: Register = (on, options) => {
       isExpiryReported: false,
     }
     openQuestion = q
-    showStatus($, statusLine(q))
+    showQuestion($, statusLine(q))
     try {
       $.ui.log(statusLine(q))
       $.ui.notify(q.question, { title: 'Claude asks' }).catch(() => {})
     } catch {}
     return { result: askedResult(q) }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc ask_async failed. Ask with AskUserQuestion instead.' }))
+
+  // 선택지는 바로 보내지 않고 입력창에 채우기만 해서, 사용자가 고쳐 보낼 수 있게 한다.
+  // 답을 기다리는 질문이 설문보다 급하므로 hasSurvey 여도 띠를 양보하지 않는다.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+    const q = openQuestion
+    if (q === null) return next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const choiceButtons = q.choices.map((choice, i) => h(Button, { key: `ask-choice-${i}`, label: choice, onPress: () => $.prompt.fill({ text: choice }) }))
+    return h(
+      Box,
+      { flexDirection: 'column' },
+      h(Text, { bold: true }, bandTitle(q)),
+      h(Text, { wrap: 'wrap' }, q.question),
+      ...(choiceButtons.length ? [h(Box, { flexDirection: 'row', gap: 1, flexWrap: 'wrap' }, ...choiceButtons), h(Text, { dimColor: true }, CHOICE_HINT)] : []),
+    ) as RenderElement
+  }).catch(($, e, next) => next(e))
 
   // 서브에이전트의 출력은 사용자보다 부모 에이전트가 읽으므로 메인 루프에만 붙인다.
   on('turn.step', async function* ($, e, next) {
@@ -332,7 +358,7 @@ export const register: Register = (on, options) => {
     }
     if (answering !== null) {
       openQuestion = null
-      showStatus($, undefined)
+      showQuestion($, undefined)
     }
     const notes = [
       ...(timeAwareness && nowMs !== null ? [promptTimeNote(nowMs)] : []),
