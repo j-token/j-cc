@@ -22,6 +22,12 @@
       "title": "Tell the model the current time",
       "description": "Add the current local time to each user message and, about once a minute, to a tool result in the main session, so the model can plan against deadlines like \"in 15 minutes\".",
       "default": true
+    },
+    "askAsync": {
+      "type": "boolean",
+      "title": "Ask without stopping work",
+      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question in the status line and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set.",
+      "default": true
     }
   }
 }
