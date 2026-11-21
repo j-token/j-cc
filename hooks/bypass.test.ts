@@ -38,7 +38,7 @@ test('모델은 규칙에 막힐 명령의 우회 이유만 검토하고, 막을
   expect(asked.length).toBe(2)
 })
 
-test('a bypass passes when the model gives no answer', async ($, on) => {
+test('a bypass passes when the model gives no answer', { options: { timeAwareness: false } }, async ($, on) => {
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))
   on('clock.now', () => ({ value: 0 }))

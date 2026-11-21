@@ -4,8 +4,8 @@ import {
   firstSentence,
   groupDeferredTools,
   readMoreNote,
+  prepareSkillListing,
   shortenAgentListing,
-  shortenSkillListing,
   shouldCapRead,
 } from './context'
 
@@ -20,17 +20,29 @@ SKIP only when another provider is used.
 - apps/web:deploy: Deploy the web app.
 - commit-rule: 커밋 규칙입니다.`
 
-test('스킬 목록은 모든 스킬을 남기고 중복과 여러 줄 설명만 뺀다', () => {
-  const out = shortenSkillListing(SKILLS)
+test('스킬 목록은 설명과 여러 줄 트리거를 그대로 두고 중복 항목만 뺀다', () => {
+  const out = prepareSkillListing(SKILLS)
 
   expect(out).toBe(`The following skills are available for use with the Skill tool:
-Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
+Before starting a task, compare it with these skills. If one covers the task or any step of it, call Skill for it first, before reading files, running commands or answering. When unsure whether one applies, load it: reading a skill that turns out not to fit costs little, while skipping one that fits loses the workflow the user set up.
 
-- commit-rule: 커밋 규칙입니다.
-- claude-api: Reference for the Claude API.
+- commit-rule: 커밋 규칙입니다. 한국어 메시지를 씁니다.
+- claude-api: Reference for the Claude API. Covers model ids and pricing.
+TRIGGER — read BEFORE opening the target file.
+SKIP only when another provider is used.
 - marketing:seo-audit: Run a comprehensive SEO audit.
 - anthropic-skills:pdf: Use this skill whenever the user wants to do anything with PDF files.
 - apps/web:deploy: Deploy the web app.`)
+})
+
+test('중복 항목을 뺄 때 그 항목에 이어지는 줄도 함께 뺀다', () => {
+  const text = `- deploy: Deploy the app.
+- deploy: Deploy again.
+TRIGGER when the user says ship.
+- review: Review the diff.`
+
+  expect(prepareSkillListing(text)).toBe(`- deploy: Deploy the app.
+- review: Review the diff.`)
 })
 
 test('이름만 있는 스킬 줄과 별칭이 붙은 스킬 줄도 항목으로 남긴다', () => {
@@ -41,11 +53,12 @@ test('이름만 있는 스킬 줄과 별칭이 붙은 스킬 줄도 항목으로
 TRIGGER when the user says ship.
 - marketing:seo-audit`
 
-  expect(shortenSkillListing(text)).toBe(`The following skills are available for use with the Skill tool:
-Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
+  expect(prepareSkillListing(text)).toBe(`The following skills are available for use with the Skill tool:
+Before starting a task, compare it with these skills. If one covers the task or any step of it, call Skill for it first, before reading files, running commands or answering. When unsure whether one applies, load it: reading a skill that turns out not to fit costs little, while skipping one that fits loses the workflow the user set up.
 
 - review
-- deploy (ship): Deploy the app.
+- deploy (ship): Deploy the app. Then verify it.
+TRIGGER when the user says ship.
 - marketing:seo-audit`)
 })
 
@@ -192,15 +205,15 @@ test('시스템 프롬프트의 Chrome 안내 섹션을 짧은 버전으로 바�
 })
 
 test('새 스킬만 실려 오는 머리말 없는 목록에는 규칙을 붙이지 않는다', () => {
-  expect(shortenSkillListing('- review: Review the diff. Then report.')).toBe('- review: Review the diff.')
+  expect(prepareSkillListing('- review: Review the diff. Then report.')).toBe('- review: Review the diff. Then report.')
 })
 
-test('스킬 목록 첨부를 줄여서 보낸다', async ($, on) => {
+test('스킬 목록 첨부는 트리거 줄을 남기고 규칙을 붙여 보낸다', async ($, on) => {
   on('prompt.attachment', ($, e) => ({ text: e.text }))
 
   const r = await $.prompt.attachment({ type: 'skill_listing', text: SKILLS, origin: { kind: 'engine' } })
 
-  expect(r.text).not.toContain('TRIGGER')
-  expect(r.text).toContain('- marketing:seo-audit: Run a comprehensive SEO audit.')
-  expect(r.text).toContain('- commit-rule: 커밋 규칙입니다.')
+  expect(r.text).toContain('TRIGGER — read BEFORE opening the target file.')
+  expect(r.text).toContain('- commit-rule: 커밋 규칙입니다. 한국어 메시지를 씁니다.')
+  expect(r.text).toContain('When unsure whether one applies, load it')
 })

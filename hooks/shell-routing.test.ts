@@ -75,7 +75,7 @@ test('PowerShell은 ToolSearch 뒤로 미루고 Bash는 처음부터 불러오�
   expect(powershell.description).toContain('j-cc blocks foreground calls of this tool')
 })
 
-test('서브에이전트는 시작할 때 과제 끝에 파일 도구와 셸 규칙을 받고, 체이닝 차단이 꺼져 있으면 그 규칙은 받지 않으며, 첫 셸 결과에서 다시 받지 않는다', async ($, on) => {
+test('서브에이전트는 시작할 때 과제 끝에 파일 도구·병렬 조회·셸 규칙을 받고, 체이닝 차단이 꺼져 있으면 그 규칙은 받지 않으며, 첫 셸 결과에서 다시 받지 않는다', async ($, on) => {
   let spawnedPrompt = ''
   on('agent.spawn', ($, e) => {
     spawnedPrompt = e.prompt
@@ -88,6 +88,7 @@ test('서브에이전트는 시작할 때 과제 끝에 파일 도구와 셸 규
 
   expect(spawnedPrompt).toStartWith('Find where the config is parsed.\n\n[j-cc] Context for this subagent:')
   expect(spawnedPrompt).toContain('- Files: Read to view, Grep and Glob to search, Edit and Write to change them.')
+  expect(spawnedPrompt).toContain('- Send independent lookups (Read, Grep, Glob, exec) together as parallel calls in one message')
   expect(spawnedPrompt).toContain('run it with mcp__j-cc__exec and keep calling mcp__j-cc__poll')
   expect(spawnedPrompt).not.toContain('j-cc blocks `&&`, `||` and `;` outside quotes')
   expect(spawnedPrompt).toContain('Never end your turn while a job you depend on is still running')

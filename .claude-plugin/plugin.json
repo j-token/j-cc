@@ -1,6 +1,6 @@
 {
   "name": "j-cc",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Harness tuning for Claude models in Claude Code: dedicated-tool routing, deterministic shell guards, background long-running commands. No external model or API key.",
   "author": { "name": "j-token" },
   "license": "MIT",
@@ -16,6 +16,18 @@
       "title": "Block command chaining",
       "description": "Block Bash, PowerShell and exec commands that chain with &&, || or ; outside quotes, so each command runs in its own call. Off by default: splitting harmless chains costs extra round trips.",
       "default": false
+    },
+    "timeAwareness": {
+      "type": "boolean",
+      "title": "Tell the model the current time",
+      "description": "Add the current local time to each user message and, about once a minute, to a tool result in the main session, so the model can plan against deadlines like \"in 15 minutes\".",
+      "default": true
+    },
+    "askAsync": {
+      "type": "boolean",
+      "title": "Ask without stopping work",
+      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question in the status line and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set.",
+      "default": true
     }
   }
 }

@@ -13,11 +13,27 @@ import {
   capMcpInstructions,
   groupDeferredTools,
   readMoreNote,
+  prepareSkillListing,
   shortenAgentListing,
-  shortenSkillListing,
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
+import { TIME_SECTION, isTimeNoteDue, promptTimeNote, toolTimeNote } from './time'
+import {
+  ASK_DESCRIPTION,
+  ASK_SCHEMA,
+  ASK_TOOL,
+  askedResult,
+  busyResult,
+  expiryNote,
+  isExpired,
+  parseChoices,
+  replyNote,
+  replyWindowMs,
+  statusLine,
+  type AskArgs,
+  type OpenQuestion,
+} from './ask'
 
 async function gatherEvidence($: EngineInterface, command: string, shell: Shell): Promise<Evidence> {
   const sources: Evidence['sources'] = []
@@ -87,7 +103,7 @@ async function hasNoExec($: EngineInterface, subagentType: string): Promise<bool
 }
 
 const ATTACHMENT_REWRITES = [
-  ['skill_listing', shortenSkillListing],
+  ['skill_listing', prepareSkillListing],
   ['agent_listing_delta', shortenAgentListing],
   ['mcp_instructions_delta', capMcpInstructions],
   ['deferred_tools_delta', groupDeferredTools],
@@ -100,6 +116,45 @@ async function configuredLanguage($: EngineInterface): Promise<unknown> {
   } catch {
     return undefined
   }
+}
+
+// 도구가 실행된 뒤에도 부르므로 configuredLanguage 처럼 던지지 않는다.
+async function readClock($: EngineInterface): Promise<number | null> {
+  try {
+    return await $.clock.now()
+  } catch {
+    return null
+  }
+}
+
+// 도구가 실행된 뒤에도 부르므로 표시가 실패해도 던지지 않는다.
+function showStatus($: EngineInterface, text: string | undefined): void {
+  try {
+    $.ui.status(text)
+  } catch {}
+}
+
+// 상태 줄은 플러그인마다 한 줄뿐이라 열린 질문도 하나만 둔다.
+let openQuestion: OpenQuestion | null = null
+let nextQuestionId = 1
+
+// 병렬 도구 호출 중 하나에만 붙도록 await 없이 확인과 기록을 한 번에 한다.
+function claimExpiryNote($: EngineInterface, nowMs: number | null): string | null {
+  const q = openQuestion
+  if (q === null || nowMs === null || q.isExpiryReported || !isExpired(q, nowMs)) return null
+  q.isExpiryReported = true
+  showStatus($, `${statusLine(q)} [expired: Claude went on without it; a reply still reaches Claude]`)
+  return expiryNote(q)
+}
+
+let lastTimeNoteAtMs: number | null = null
+let lastUserMessageAtMs: number | null = null
+
+// 병렬 도구 호출 중 하나에만 붙도록, 시각을 읽은 뒤 await 없이 확인과 기록을 한 번에 한다.
+function claimToolTimeNote(nowMs: number | null): string | null {
+  if (nowMs === null || !isTimeNoteDue(nowMs, lastTimeNoteAtMs)) return null
+  lastTimeNoteAtMs = nowMs
+  return toolTimeNote(nowMs, lastUserMessageAtMs)
 }
 
 // 직전 응답 중 설정 언어가 아닐 수 있어 모델에게 물어볼 텍스트. 다음 메인 루프 도구 호출이 가져간다.
@@ -172,6 +227,8 @@ export const register: Register = (on, options) => {
   // 체이닝은 켰을 때만 막는다. 막으면 해가 없는 `node -v; npm -v` 같은 조회도 호출 여러 번으로 쪼개진다.
   const screenOptions = { blockChaining: options.blockChaining === true, useModel }
   const subagentContext = subagentNote(screenOptions.blockChaining)
+  const timeAwareness = options.timeAwareness !== false
+  const askAsync = options.askAsync !== false
 
   // fork 는 부모의 맥락을 그대로 이어받으므로 건드리지 않는다.
   on('agent.spawn', async ($, e, next) => {
@@ -184,8 +241,42 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await registerExecTools($, screenOptions)
+    if (askAsync) await $.tool.register({ name: 'ask_async', description: ASK_DESCRIPTION, inputSchema: ASK_SCHEMA, isDeferred: false })
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  // 질문을 화면에 띄우기만 하므로 권한을 따로 묻지 않는다.
+  on('tool.check', { tool: ASK_TOOL }, async ($, e, next) => {
+    const own = await next(e)
+    return own.decision === 'deny' ? own : { decision: 'allow' as const }
+  }).catch(($, e, next) => next(e))
+
+  // 답은 사용자의 다음 메시지로 받는다. $.ui.ask 는 마감에 대화상자를 닫을 수 없고 -p 에서는 거절된다.
+  on('tool.call', { tool: ASK_TOOL }, async ($, e, next) => {
+    if (String(e.tool) !== ASK_TOOL) return next(e)
+    if (e.agentId !== undefined) return { deny: '[j-cc] ask_async is for the main session. Put the open question in your report to the parent agent instead.' }
+    const args = e as unknown as AskArgs
+    const question = typeof args.question === 'string' ? args.question.trim() : ''
+    if (!question) return { deny: 'question is required.' }
+    const nowMs = await $.clock.now()
+    if (openQuestion !== null && !isExpired(openQuestion, nowMs)) return { result: busyResult(openQuestion) }
+
+    const q: OpenQuestion = {
+      id: nextQuestionId++,
+      question,
+      choices: parseChoices(args.choices),
+      askedAtMs: nowMs,
+      expiresAtMs: nowMs + replyWindowMs(args.reply_within_minutes),
+      isExpiryReported: false,
+    }
+    openQuestion = q
+    showStatus($, statusLine(q))
+    try {
+      $.ui.log(statusLine(q))
+      $.ui.notify(q.question, { title: 'Claude asks' }).catch(() => {})
+    } catch {}
+    return { result: askedResult(q) }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'j-cc ask_async failed. Ask with AskUserQuestion instead.' }))
 
   // 서브에이전트의 출력은 사용자보다 부모 에이전트가 읽으므로 메인 루프에만 붙인다.
   on('turn.step', async function* ($, e, next) {
@@ -205,7 +296,16 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     const language = await drift
     if (r.deny !== undefined) return language ? { deny: `${r.deny}\n\n${driftWarning(language)}` } : r
-    const notes = [replyLanguageNote(await configuredLanguage($)), ...(language ? [driftWarning(language)] : [])]
+    // 시계는 도구가 돌아온 뒤에 읽는다. 모델이 결과를 읽는 시각에 가깝고, exec 이 재는 wall 시간을 건드리지 않는다.
+    const nowMs = timeAwareness || openQuestion !== null ? await readClock($) : null
+    const timeNote = timeAwareness && r.isError !== true ? claimToolTimeNote(nowMs) : null
+    const expired = claimExpiryNote($, nowMs)
+    const notes = [
+      ...(timeNote ? [timeNote] : []),
+      ...(expired ? [expired] : []),
+      replyLanguageNote(await configuredLanguage($)),
+      ...(language ? [driftWarning(language)] : []),
+    ]
     return { ...r, context: [...(r.context ?? []), ...notes] }
   }).catch(($, e, next) => next(e))
 
@@ -223,8 +323,21 @@ export const register: Register = (on, options) => {
     if (e.origin?.kind === 'task-notification' && isReportedTaskNotice(e.text)) return { drop: '[j-cc] duplicate notice' }
     const language = driftAtTurnEnd
     driftAtTurnEnd = null
+    const isFromUser = USER_ORIGINS.has(e.origin?.kind ?? '')
+    const answering = isFromUser ? openQuestion : null
+    const nowMs = timeAwareness || answering !== null ? await readClock($) : null
+    if (timeAwareness && nowMs !== null) {
+      lastTimeNoteAtMs = nowMs
+      if (isFromUser) lastUserMessageAtMs = nowMs
+    }
+    if (answering !== null) {
+      openQuestion = null
+      showStatus($, undefined)
+    }
     const notes = [
-      ...(USER_ORIGINS.has(e.origin?.kind ?? '') ? [] : [replyLanguageNote(await configuredLanguage($))]),
+      ...(timeAwareness && nowMs !== null ? [promptTimeNote(nowMs)] : []),
+      ...(answering !== null && nowMs !== null ? [replyNote(answering, nowMs)] : []),
+      ...(isFromUser ? [] : [replyLanguageNote(await configuredLanguage($))]),
       ...(language ? [driftWarning(language)] : []),
     ]
     const r = await next(notes.length ? { ...e, context: [...(e.context ?? []), ...notes] } : e)
@@ -309,6 +422,7 @@ export const register: Register = (on, options) => {
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
         { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
         { id: 'j-cc:shell-commands', text: SHELL_COMMANDS, scope: 'session' as const },
+        ...(timeAwareness ? [{ id: 'j-cc:time', text: TIME_SECTION, scope: 'session' as const }] : []),
       ],
     }
   }).catch(($, e, next) => next(e))
