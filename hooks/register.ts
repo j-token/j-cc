@@ -13,8 +13,8 @@ import {
   capMcpInstructions,
   groupDeferredTools,
   readMoreNote,
+  prepareSkillListing,
   shortenAgentListing,
-  shortenSkillListing,
   shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
@@ -103,7 +103,7 @@ async function hasNoExec($: EngineInterface, subagentType: string): Promise<bool
 }
 
 const ATTACHMENT_REWRITES = [
-  ['skill_listing', shortenSkillListing],
+  ['skill_listing', prepareSkillListing],
   ['agent_listing_delta', shortenAgentListing],
   ['mcp_instructions_delta', capMcpInstructions],
   ['deferred_tools_delta', groupDeferredTools],

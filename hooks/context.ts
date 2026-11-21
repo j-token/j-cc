@@ -1,4 +1,4 @@
-// 엔진이 주입하는 목록과 도구 출력의 기본 크기를 줄인다. pi 처럼 매 요청에 실리는 텍스트를 최소로 둔다.
+// 엔진이 주입하는 목록과 도구 출력의 기본 크기를 줄인다. 스킬 설명은 모델이 스킬을 고르는 근거라 줄이지 않는다.
 // 입력 형식은 Claude Code 2.1.301 의 렌더링 결과다. 형식이 바뀌면 패턴이 맞지 않아 원문이 그대로 지나간다.
 
 const ENTRY_DESCRIPTION_CHARS = 120
@@ -48,13 +48,31 @@ export function shortenListing(text: string, options: { dropSuffix?: RegExp } = 
   return out.join('\n')
 }
 
+// 같은 이름의 항목은 처음 것만 남기고, 버린 항목에 이어지는 줄도 함께 버린다. 남긴 항목의 설명은 건드리지 않는다.
+export function dropDuplicateEntries(text: string): string {
+  const out: string[] = []
+  const seen = new Set<string>()
+  let droppingEntry = false
+  for (const line of text.split('\n')) {
+    const name = /^- (.+?)(?=: | \(|$)/.exec(line)?.[1]
+    if (name !== undefined) {
+      droppingEntry = seen.has(name)
+      seen.add(name)
+    } else if (line.trim() === '') droppingEntry = false
+    if (!droppingEntry) out.push(line)
+  }
+  return out.join('\n')
+}
+
 export const SKILL_RULE =
   'Before starting a task, compare it with these skills. When a skill\'s description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.'
 
 // 첫 목록에만 머리말이 붙고, 뒤에 새 스킬만 실려 오는 첨부에는 없다. 머리말이 없으면 규칙도 붙이지 않는다.
 const SKILL_LISTING_HEADER = /^(The following skills are available[^\n]*\n)/
 
-export const shortenSkillListing = (text: string) => shortenListing(text).replace(SKILL_LISTING_HEADER, `$1${SKILL_RULE}\n`)
+// 스킬 설명은 자르지 않는다. "Use when …", TRIGGER 줄처럼 언제 부를지 알려 주는 문장은 대개 첫 문장 뒤에 있어,
+// 첫 문장만 남기면 모델이 맞는 스킬을 고르지 못한다(docs/skill-listing.md). 목록 크기는 엔진이 예산으로 정한다.
+export const prepareSkillListing = (text: string) => dropDuplicateEntries(text).replace(SKILL_LISTING_HEADER, `$1${SKILL_RULE}\n`)
 
 export const shortenAgentListing = (text: string) => shortenListing(text, { dropSuffix: /\s*\(Tools: [^)]*\)\s*$/ })
 
