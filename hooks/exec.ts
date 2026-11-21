@@ -179,6 +179,24 @@ export function quoteCwd(shell: Shell, cwd: string): string {
   return shell === 'powershell' ? `Set-Location -LiteralPath '${cwd.replace(/'/g, "''")}'; ` : `cd -- '${cwd.replace(/'/g, `'\\''`)}' && `
 }
 
+function comparablePath(path: string): string {
+  const slashed = path.replace(/\\/g, '/').replace(/^\/([a-zA-Z])(\/|$)/, '$1:/').replace(/\/+$/, '')
+  return /^[a-zA-Z]:/.test(slashed) ? slashed.toLowerCase() : slashed
+}
+
+// Windows 경로(C:\a), Git Bash 경로(/c/a), 끝 슬래시와 드라이브 대소문자가 달라도 같은 폴더로 본다.
+export function isSameDirectory(a: string, b: string): boolean {
+  return comparablePath(a) === comparablePath(b)
+}
+
+// 엔진은 안쪽 Bash 의 `cd … &&` 를 따로 승인받으라고 거절할 때가 있다. 모델은 세션 폴더를 cwd 로 자주 넘기므로 그때는 cd 를 붙이지 않는다.
+// 서브에이전트는 워크트리처럼 세션과 다른 폴더에서 돌 수 있어, 세션 폴더와 같아 보여도 cd 를 그대로 붙인다.
+export function cwdToEnter(requested: string | undefined, sessionCwd: string | undefined, agentId: string | undefined): string | undefined {
+  if (!requested) return undefined
+  const isMainSessionFolder = agentId === undefined && sessionCwd !== undefined && isSameDirectory(requested, sessionCwd)
+  return isMainSessionFolder ? undefined : requested
+}
+
 export function launchedTask(launched: unknown): { taskId: string; outputPath: string } | null {
   const r = launched as { result?: { backgroundTaskId?: unknown }; text?: unknown }
   const taskId = typeof r?.result?.backgroundTaskId === 'string' ? r.result.backgroundTaskId : undefined
@@ -361,7 +379,10 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
 
     const command = commandOf(args)
     const shell = shellOf(args)
-    const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
+    const requestedCwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
+    const agentId = (e as { agentId?: string }).agentId
+    const sessionCwd = requestedCwd && agentId === undefined ? await $.session.cwd().catch(() => undefined) : undefined
+    const cwd = cwdToEnter(requestedCwd, sessionCwd, agentId)
     const startedAtMs = await $.clock.now()
     // 훅이 부른 도구에는 이 플러그인의 훅이 다시 걸리지 않으므로, 포그라운드 셸 차단에 막히지 않는다.
     // 서브에이전트에서는 포그라운드로 불러도 엔진이 백그라운드로 돌리고 timeout 을 마감으로 쓰므로, 처음부터 백그라운드로 맡긴다.
@@ -377,7 +398,7 @@ export function registerExec(on: On, screenOptions: ScreenOptions): void {
     const run: Run = { id: nextRunId++, command, startedAtMs, ...task, reportedChars: 0 }
     runs.set(run.id, run)
     // 명령은 이미 돌고 있다. 기다리다 실패했다고 거부하면 모델이 같은 명령을 다시 실행한다.
-    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), (e as { agentId?: string }).agentId, next, args.max_output_chars).catch(() => ({
+    return waitAndReport($, run, yieldMs(args.yield_time_ms, MAX_EXEC_YIELD_MS), agentId, next, args.max_output_chars).catch(() => ({
       result: unwatchedRunNote(run.id),
     }))
   }).catch(() => ({ deny: 'j-cc exec failed before it could report a session_id; the command may not have started.' }))

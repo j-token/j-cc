@@ -8,9 +8,11 @@ import {
   budgetedYieldMs,
   clip,
   cutMainLoopWaits,
+  cwdToEnter,
   holdWait,
   isIdlePoll,
   isReportedTaskNotice,
+  isSameDirectory,
   launchedTask,
   markReported,
   noteActivity,
@@ -67,6 +69,21 @@ test('Bash 백그라운드 실행 결과에서 작업 ID와 출력 파일 경로
 
   expect(launchedTask(launched)).toEqual({ taskId: 'b7ywg0ifx', outputPath: 'C:\\Temp\\tasks\\b7ywg0ifx.output' })
   expect(launchedTask({ deny: 'blocked' })).toBe(null)
+})
+
+test('표기만 다른 같은 폴더 경로는 같은 폴더로 본다', () => {
+  expect(isSameDirectory('C:\\Users\\me\\proj', 'c:/Users/me/proj/')).toBe(true)
+  expect(isSameDirectory('/c/Users/me/proj', 'C:\\Users\\me\\proj')).toBe(true)
+  expect(isSameDirectory('C:\\Users\\me\\proj', 'C:\\Users\\me\\proj\\sub')).toBe(false)
+  expect(isSameDirectory('/home/me/Proj', '/home/me/proj')).toBe(false)
+})
+
+test('메인에서 세션 폴더를 cwd로 주면 cd를 붙이지 않고, 서브에이전트나 다른 폴더면 그대로 붙인다', () => {
+  expect(cwdToEnter('C:\\Users\\me\\proj', 'c:/Users/me/proj', undefined)).toBe(undefined)
+  expect(cwdToEnter('C:\\Users\\me\\proj', 'c:/Users/me/proj', 'sub-1')).toBe('C:\\Users\\me\\proj')
+  expect(cwdToEnter('C:\\Users\\me\\other', 'c:/Users/me/proj', undefined)).toBe('C:\\Users\\me\\other')
+  expect(cwdToEnter('C:\\Users\\me\\proj', undefined, undefined)).toBe('C:\\Users\\me\\proj')
+  expect(cwdToEnter(undefined, 'c:/Users/me/proj', undefined)).toBe(undefined)
 })
 
 test('cwd는 셸에 맞게 인용해 명령 앞에 붙인다', () => {
