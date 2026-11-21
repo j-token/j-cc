@@ -65,7 +65,7 @@ export function dropDuplicateEntries(text: string): string {
 }
 
 export const SKILL_RULE =
-  'Before starting a task, compare it with these skills. When a skill\'s description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.'
+  'Before starting a task, compare it with these skills. If one covers the task or any step of it, call Skill for it first, before reading files, running commands or answering. When unsure whether one applies, load it: reading a skill that turns out not to fit costs little, while skipping one that fits loses the workflow the user set up.'
 
 // 첫 목록에만 머리말이 붙고, 뒤에 새 스킬만 실려 오는 첨부에는 없다. 머리말이 없으면 규칙도 붙이지 않는다.
 const SKILL_LISTING_HEADER = /^(The following skills are available[^\n]*\n)/

@@ -24,7 +24,7 @@ test('스킬 목록은 설명과 여러 줄 트리거를 그대로 두고 중복
   const out = prepareSkillListing(SKILLS)
 
   expect(out).toBe(`The following skills are available for use with the Skill tool:
-Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
+Before starting a task, compare it with these skills. If one covers the task or any step of it, call Skill for it first, before reading files, running commands or answering. When unsure whether one applies, load it: reading a skill that turns out not to fit costs little, while skipping one that fits loses the workflow the user set up.
 
 - commit-rule: 커밋 규칙입니다. 한국어 메시지를 씁니다.
 - claude-api: Reference for the Claude API. Covers model ids and pricing.
@@ -54,7 +54,7 @@ TRIGGER when the user says ship.
 - marketing:seo-audit`
 
   expect(prepareSkillListing(text)).toBe(`The following skills are available for use with the Skill tool:
-Before starting a task, compare it with these skills. When a skill's description covers the task, call Skill for it before doing the work yourself. A keyword match alone is not a reason to call one.
+Before starting a task, compare it with these skills. If one covers the task or any step of it, call Skill for it first, before reading files, running commands or answering. When unsure whether one applies, load it: reading a skill that turns out not to fit costs little, while skipping one that fits loses the workflow the user set up.
 
 - review
 - deploy (ship): Deploy the app. Then verify it.
@@ -215,5 +215,5 @@ test('스킬 목록 첨부는 트리거 줄을 남기고 규칙을 붙여 보낸
 
   expect(r.text).toContain('TRIGGER — read BEFORE opening the target file.')
   expect(r.text).toContain('- commit-rule: 커밋 규칙입니다. 한국어 메시지를 씁니다.')
-  expect(r.text).toContain('A keyword match alone is not a reason to call one.')
+  expect(r.text).toContain('When unsure whether one applies, load it')
 })
