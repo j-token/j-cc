@@ -155,7 +155,7 @@ grep -c MAGIC app.exe # j-cc:allow: Grep 도구는 바이너리 파일 안을 �
 - 파일 보기와 다른 명령어를 이은 체인(`head f && wc -l f`)은 파일 보기 규칙에 걸리지 않습니다. 이 규칙은 호출 전체가 보기·검색뿐일 때만 막습니다.
 - 시간대는 mod 런타임이 아는 시스템 시간대를 씁니다. Claude Code에 시간대 API가 없어서, 런타임이 UTC로 돌면 `+00:00`으로 찍힙니다(절대 시각은 맞습니다). 도구 결과 없이 오래 생각만 하는 동안에는 시각이 갱신되지 않습니다.
 - `ask_async`는 질문이 열린 동안 사용자가 보낸 메시지를 내용과 관계없이 답 후보로 표시합니다. 답인지는 Claude가 판단합니다. 만료는 도구 결과가 돌아올 때만 확인하므로, 도구를 부르지 않는 동안에는 알리지 않습니다.
-- exec의 권한은 같은 명령어의 Bash/PowerShell 판정을 따릅니다. 그 판정이 `ask`이거나 auto mode 분류기가 Bash 판정을 내지 않아 거부한 경우에는 엔진이 exec 자체에 내린 판정을 그대로 씁니다. 그래서 auto mode에서는 분류기가 판단하고, 기본 모드에서 "항상 허용"을 고르면 그 규칙이 남습니다. exec 전체를 허용 규칙에 넣으면 Bash였다면 물었을 명령어도 묻지 않고 실행됩니다.
+- exec의 권한은 같은 명령어의 Bash/PowerShell 판정을 따릅니다. 그 판정이 `ask`이거나 auto mode 분류기가 Bash 판정을 내지 않아 거부한 경우에는 엔진이 exec 자체에 내린 판정을 그대로 씁니다. 단, 설정의 `permissions.ask` 규칙에 걸린 `ask`는 넘기지 않고 사용자에게 묻습니다. 그래서 auto mode에서는 ask 규칙에 걸리지 않는 명령만 분류기가 판단하고, 기본 모드에서 "항상 허용"을 고르면 그 규칙이 남습니다. exec 전체를 허용 규칙에 넣으면 Bash였다면 물었을 명령어도 묻지 않고 실행됩니다.
 - exec가 부르는 Bash 호출은 권한을 다시 확인하지 않습니다. 같은 명령어의 Bash/PowerShell 판정을 따르는 exec 자신의 확인이 유일한 관문입니다. 다른 플러그인의 Bash 훅은 이 호출에도 적용됩니다. settings.json의 `Bash`/`PowerShell` PreToolUse 훅이 적용되는지는 확인하지 않았습니다. stdin이 닫힌 채 실행하므로 대화형 프롬프트는 쓸 수 없습니다.
 - [Code Mode](https://code.claude.com/docs/en/code-mode)와 함께 쓸 수 없습니다. Code Mode는 도구 호출을 검사하는 mod가 있으면 켜지지 않고, j-cc는 `tool.call` 훅으로 동작합니다. j-cc를 켠 채 `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1`로 시작하면 Code Mode 없이 일반 도구로 세션이 열립니다(2.1.325에서 확인). Code Mode를 쓰려면 j-cc를 끕니다.
 

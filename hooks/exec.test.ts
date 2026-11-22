@@ -108,6 +108,18 @@ test('셸 판정이 ask이면 exec에 대한 엔진 판정을 넘기고, allow�
   expect(denied.decision).toBe('deny')
 })
 
+test('설정의 ask 규칙에 걸린 명령은 auto 분류기에 넘기지 않고 셸 판정대로 사람에게 묻는다', async ($, on) => {
+  on('tool.check', ($, e) => {
+    if (e.tool === EXEC_TOOL) return { decision: 'allow', reason: 'auto classifier allowed exec' }
+    return { decision: 'ask', reason: 'matches an ask rule', rule: 'Bash(*id_ed25519*)' }
+  })
+
+  const verdict = await $.tool.check({ tool: EXEC_TOOL, input: { cmd: 'ssh-keygen -y -f ~/.ssh/id_ed25519' } })
+
+  expect(verdict.decision).toBe('ask')
+  expect(verdict.rule).toBe('Bash(*id_ed25519*)')
+})
+
 test('auto 분류기가 Bash 판정을 내지 않아 거부하면 exec에 대한 엔진 판정을 넘긴다', async ($, on) => {
   const NO_VERDICT = 'The server-side auto mode classifier gave no verdict for Bash: the request that produced this action did not ask for one.'
   on('tool.check', ($, e) => {
