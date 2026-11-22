@@ -112,6 +112,39 @@ test('서브에이전트와 빈 질문은 거절한다', { options: { timeAwaren
   expect((empty as { deny?: string }).deny).toBe('question is required.')
 })
 
+const BAND = {
+  plugin: 'j-cc',
+  component: 'AbovePrompt',
+  requestId: 'band',
+  surface: 'terminal',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 20, columns: 60, scroll: { offset: 0, bodyRows: 20 } },
+} as const
+
+test('열린 질문은 입력창 위 띠에 전문을 보이고, 선택지를 누르면 보내지 않고 입력창에만 채운다', { options: { timeAwareness: false } }, async ($, on) => {
+  const clock = { nowMs: 6_000_000 }
+  engine(on, clock)
+  const fills: unknown[] = []
+  on('prompt.fill', ($, e) => {
+    fills.push(e)
+    return { isFilled: true } as never
+  })
+  const question = '데모 스테이지를 버린다면 어디까지 지울까요? (가) 테스트만 (나) 레벨 파일과 스냅숏까지 (다) 위키 문서와 번역까지'
+
+  await ask($, { question, choices: ['(가) 테스트만', '(다) 위키까지'] })
+  const open = await $.ui.mount(BAND as never)
+  const shown = await open.find({ type: 'Text', text: /데모 스테이지/ })
+  await $.ui.press({ plugin: 'j-cc', key: 'ask-choice-1' })
+  await open.unmount()
+  await $.prompt.submit({ text: '(다) 위키까지', origin: { kind: 'composer' } } as never)
+  const answered = await $.ui.mount(BAND as never)
+  const leftOver = await answered.find({ type: 'Text', text: /데모 스테이지/ })
+  await answered.unmount()
+
+  expect(shown?.text).toBe(question)
+  expect(fills).toEqual([expect.objectContaining({ text: '(다) 위키까지' })])
+  expect(leftOver).toBe(undefined)
+})
+
 function registrations(on: On): string[] {
   const registered: string[] = []
   on('tool.register', ($, e) => {
@@ -122,7 +155,7 @@ function registrations(on: On): string[] {
   return registered
 }
 
-test('세션이 시작되면 exec 과 함께 ask_async 를 등록한다', async ($, on) => {
+test('askAsync 를 켜면 세션이 시작될 때 exec 과 함께 ask_async 를 등록한다', { options: { askAsync: true } }, async ($, on) => {
   const registered = registrations(on)
 
   await $.session.start({ cwd: 'C:/Users/me/proj' } as never)
@@ -131,7 +164,7 @@ test('세션이 시작되면 exec 과 함께 ask_async 를 등록한다', async 
   expect(registered).toContain('ask_async')
 })
 
-test('askAsync 를 끄면 ask_async 를 등록하지 않는다', { options: { askAsync: false } }, async ($, on) => {
+test('askAsync 를 켜지 않으면 ask_async 를 등록하지 않는다', async ($, on) => {
   const registered = registrations(on)
 
   await $.session.start({ cwd: 'C:/Users/me/proj' } as never)

@@ -1,6 +1,6 @@
 {
   "name": "j-cc",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Harness tuning for Claude models in Claude Code: dedicated-tool routing, deterministic shell guards, background long-running commands. No external model or API key.",
   "author": { "name": "j-token" },
   "license": "MIT",
@@ -26,8 +26,8 @@
     "askAsync": {
       "type": "boolean",
       "title": "Ask without stopping work",
-      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question in the status line and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set.",
-      "default": true
+      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question above the prompt and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set. Off by default.",
+      "default": false
     }
   }
 }

@@ -49,6 +49,13 @@ export function statusLine(q: OpenQuestion): string {
   return `j-cc question q${q.id}, reply by ${clockTime(q.expiresAtMs)}: ${q.question}${choices}`
 }
 
+export function bandTitle(q: OpenQuestion): string {
+  const expired = q.isExpiryReported ? ' [expired: Claude went on without it; a reply still reaches Claude]' : ''
+  return `Claude asks (q${q.id}), reply by ${clockTime(q.expiresAtMs)}${expired}`
+}
+
+export const CHOICE_HINT = 'A choice goes into the prompt for you to edit and send.'
+
 export function askedResult(q: OpenQuestion): string {
   return `Asked the user (q${q.id}); the question is on their screen. Keep working on what does not depend on the answer. Their reply arrives with a later tool result; if none comes by ${formatLocalTime(q.expiresAtMs)}, the question expires.`
 }
