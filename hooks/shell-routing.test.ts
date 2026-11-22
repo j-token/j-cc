@@ -32,6 +32,37 @@ test('파일 보기처럼 규칙에 걸리는 명령은 exec 안내보다 그 �
   expect(JSON.stringify(r)).toContain('[j-cc] Blocked (view)')
 })
 
+test('dedicatedTools를 끄면 셸의 파일 작업을 막지 않고 전용 도구 안내도 빼며, 대기 차단과 exec 안내는 그대로 둔다', { options: { dedicatedTools: false, timeAwareness: false } }, async ($, on) => {
+  const ran: string[] = []
+  on('tool.call', ($, e) => {
+    if (e.tool === 'Bash') ran.push(e.command)
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+  on('prompt.compose', () => ({ sections: [] }))
+
+  const view = await $.tool.call({ tool: 'Bash', command: 'cat src/app.ts', run_in_background: true })
+  const search = await $.tool.call({ tool: 'Bash', command: 'grep -rn TODO src', run_in_background: true })
+  const wait = await $.tool.call({ tool: 'Bash', command: 'sleep 30 && npm test' })
+  const foreground = await $.tool.call({ tool: 'Bash', command: 'cat src/app.ts' })
+  const viaExec = await $.tool.call({ tool: 'mcp__j-cc__exec', cmd: 'grep -rn TODO src' } as never)
+  const { sections } = await $.prompt.compose({
+    model: 'claude-opus-5-5',
+    promptModel: 'claude-opus-5-5',
+    surfaces: ['terminal'],
+    tools: ['Bash', 'Read', 'Edit'],
+    outputStyle: null,
+    traits: [],
+  })
+
+  expect(ran).toEqual(['cat src/app.ts', 'grep -rn TODO src'])
+  expect(JSON.stringify(view)).not.toContain('[j-cc] Blocked')
+  expect(JSON.stringify(search)).not.toContain('[j-cc] Blocked')
+  expect(JSON.stringify(wait)).toContain('[j-cc] Blocked (wait')
+  expect(foreground).toEqual({ deny: USE_EXEC_INSTEAD })
+  expect(JSON.stringify(viaExec)).not.toContain('[j-cc] Blocked')
+  expect(sections.find(s => s.id === 'j-cc:routing')?.text).not.toContain('- Files:')
+})
+
 test('도구 목록을 직접 정했고 exec이 없는 에이전트 정의만 exec이 없다고 본다', () => {
   expect(listsToolsWithoutExec('---\nname: x\ntools: Read, Bash, Glob\n---\nbody')).toBe(true)
   expect(listsToolsWithoutExec('---\nname: x\ntools: Read, Bash, mcp__j-cc__exec, mcp__j-cc__poll\n---\n')).toBe(false)

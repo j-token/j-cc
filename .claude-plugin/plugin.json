@@ -5,6 +5,12 @@
   "author": { "name": "j-token" },
   "license": "MIT",
   "userConfig": {
+    "dedicatedTools": {
+      "type": "boolean",
+      "title": "Route file work to dedicated tools",
+      "description": "Block shell commands that only view, search, write or edit files (cat, grep, find, sed -i, heredocs, Set-Content, ...) and point Claude to Read, Grep, Glob, Write and Edit. Turn off to let the shell do file work; waits, endless loops and foreground Bash are still handled.",
+      "default": true
+    },
     "modelJudge": {
       "type": "boolean",
       "title": "Model judge for ambiguous commands",

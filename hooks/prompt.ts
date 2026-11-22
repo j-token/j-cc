@@ -1,5 +1,9 @@
-export const SHELL_TOOL_NOTE =
-  'j-cc blocks foreground calls of this tool: run commands with mcp__j-cc__exec (shell: "bash" or "powershell"), which returns within 30s with the output, or moves the command to the background and notifies you when it exits. This tool still runs with run_in_background: true. Do not use the shell to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit.'
+const SHELL_EXEC_NOTE =
+  'j-cc blocks foreground calls of this tool: run commands with mcp__j-cc__exec (shell: "bash" or "powershell"), which returns within 30s with the output, or moves the command to the background and notifies you when it exits. This tool still runs with run_in_background: true.'
+const SHELL_FILE_NOTE =
+  'Do not use the shell to view, search, create or edit files (cat, head, sed -n, grep, rg, find, ls -R, Get-Content, Select-String, heredocs, echo >, sed -i, Set-Content): use Read, Grep, Glob, Write and Edit.'
+
+export const shellToolNote = (dedicatedTools: boolean) => (dedicatedTools ? `${SHELL_EXEC_NOTE} ${SHELL_FILE_NOTE}` : SHELL_EXEC_NOTE)
 
 // PowerShell 기본 설명은 `cmd1 && cmd2`를 권하므로, 막히기 전에 알 수 있게 설명 끝에서 덮어쓴다.
 export const CHAIN_NOTE =
@@ -17,9 +21,11 @@ export function replyLanguageNote(language: unknown): string {
 
 export const FILE_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write']
 
-export const ROUTING = `# Tool routing
-- Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.
-- Shell commands: mcp__j-cc__exec (shell "bash" or "powershell"); foreground Bash and PowerShell calls are blocked. exec returns within 30s; a command still running then moves to the background and you are notified when it exits, so go on with other work. Use mcp__j-cc__poll only when you need its output sooner, waiting longer per call rather than calling it often. Rely on the completion notice first; do not put a fixed sleep (sleep 20 && ...) before a command to guess when something will be ready. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
+const ROUTING_FILE_RULE =
+  '- Files: Read, Grep, Glob, Edit, Write, never shell equivalents (cat, grep, find, sed, heredocs, Get-Content). Only Edit/Write changes can be undone with /rewind.\n'
+
+export const routing = (dedicatedTools: boolean) => `# Tool routing
+${dedicatedTools ? ROUTING_FILE_RULE : ''}- Shell commands: mcp__j-cc__exec (shell "bash" or "powershell"); foreground Bash and PowerShell calls are blocked. exec returns within 30s; a command still running then moves to the background and you are notified when it exits, so go on with other work. Use mcp__j-cc__poll only when you need its output sooner, waiting longer per call rather than calling it often. Rely on the completion notice first; do not put a fixed sleep (sleep 20 && ...) before a command to guess when something will be ready. Follow logs and wait for conditions with Monitor, never sleep loops. Repeat on a schedule with /loop or CronCreate.
 - A tool you need is not in your tool list (web, browser, MCP server, scheduling, notebooks): search for it with ToolSearch before falling back to the shell. Deferred tools are listed by name only; load them with ToolSearch "select:<name>".
 - Run the narrowest check first. Issue independent lookups in one message.
 - Web pages: WebFetch. Library docs: context7. GitHub: gh.`
@@ -50,9 +56,15 @@ const SUBAGENT_CHAIN_RULE =
   '- Run one shell command per call: j-cc blocks `&&`, `||` and `;` outside quotes. Use absolute paths or `git -C <dir>` instead of `cd dir &&`.'
 
 // 서브에이전트는 메인의 시스템 프롬프트 섹션(# Tool routing 등)을 받는다는 보장이 없어, 같은 규칙을 짧게 따로 전한다.
-export function subagentNote(blockChaining: boolean): string {
+export function subagentNote(blockChaining: boolean, dedicatedTools = true): string {
   const shellRules = SUBAGENT_RULES.replace(/^Subagent \(started by the Agent tool\):\n/, '')
-  return ['[j-cc] Context for this subagent:', SUBAGENT_FILE_RULE, SUBAGENT_PARALLEL_RULE, ...(blockChaining ? [SUBAGENT_CHAIN_RULE] : []), shellRules].join('\n')
+  return [
+    '[j-cc] Context for this subagent:',
+    ...(dedicatedTools ? [SUBAGENT_FILE_RULE] : []),
+    SUBAGENT_PARALLEL_RULE,
+    ...(blockChaining ? [SUBAGENT_CHAIN_RULE] : []),
+    shellRules,
+  ].join('\n')
 }
 
 export const WORKFLOW = `# User workflow first

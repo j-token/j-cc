@@ -6,7 +6,7 @@ import { commandName, stripPrefix, tokenize, type Segment, type Shell } from './
 
 type Kind = 'write' | 'edit' | 'search' | 'view' | 'follow' | 'forever' | 'schedule' | 'poll' | 'wait' | 'watch' | 'chain'
 export type Verdict = { kind: Kind; detail?: string }
-export type JudgeOptions = { blockChaining?: boolean }
+export type JudgeOptions = { blockChaining?: boolean; dedicatedTools?: boolean }
 
 const NULL_TARGET = /^(\/dev\/(null|stdout|stderr|tty)|\$null|nul|con)$/i
 const SPECIAL_PATH = /^\/(proc|sys|dev)\//
@@ -378,9 +378,10 @@ export function judge(command: string, shell: Shell, background: boolean, option
 }
 
 // 우회 주석과 상관없이 규칙이 무엇을 막는지 본다. 파일 작업과 대기 판정이 더 구체적인 안내를 주므로 체이닝은 마지막에 본다.
-export function ruleVerdict(command: string, shell: Shell, background: boolean, { blockChaining = true }: JudgeOptions = {}): Verdict | null {
+export function ruleVerdict(command: string, shell: Shell, background: boolean, { blockChaining = true, dedicatedTools = true }: JudgeOptions = {}): Verdict | null {
   if (!command.trim()) return null
-  const verdict = dedicatedToolVerdict(command, shell) ?? timingVerdict(command, shell, background)
+  const fileVerdict = dedicatedTools ? dedicatedToolVerdict(command, shell) : null
+  const verdict = fileVerdict ?? timingVerdict(command, shell, background)
   if (verdict || !blockChaining) return verdict
   const op = chainOperator(command, shell)
   return op ? { kind: 'chain', detail: op } : null

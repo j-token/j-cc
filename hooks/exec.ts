@@ -204,10 +204,14 @@ export function launchedTask(launched: unknown): { taskId: string; outputPath: s
   return taskId && outputPath ? { taskId, outputPath } : null
 }
 
-export const EXEC_DESCRIPTION = [
-  'Run a shell command (shell: "bash" or "powershell").',
+const EXEC_FILE_RULE = [
   'Not for files: j-cc blocks commands that only view or search them (cat, head, sed -n, grep, rg, find, Get-Content, Select-String), even when chained with other such commands.',
   'Read a line range with Read offset/limit, find text in a known file with Grep path, and send those calls in parallel.',
+]
+
+export const execDescription = (dedicatedTools: boolean) => [
+  'Run a shell command (shell: "bash" or "powershell").',
+  ...(dedicatedTools ? EXEC_FILE_RULE : []),
   `If it finishes within yield_time_ms (default ${DEFAULT_YIELD_MS}, at most ${MAX_EXEC_YIELD_MS}) you get the exit code and output.`,
   'Otherwise it keeps running in the background like Bash run_in_background: you get the output so far and a session_id, and you are notified when it exits, so go on with other work.',
   `Call poll with that session_id only when you need its output before then (it waits up to ${MAX_POLL_YIELD_MS} ms per call), or with terminate: true to stop it.`,
@@ -317,7 +321,7 @@ const CMD_DESCRIPTION = 'The command to run.'
 const CMD_DESCRIPTION_NO_CHAINING =
   'The command to run: one command, since `&&`, `||` and `;` outside quotes are blocked. Use `cwd` instead of `cd dir &&`; put a loop in a scratchpad script and run that file.'
 
-export async function registerExecTools($: EngineInterface, { blockChaining = true }: { blockChaining?: boolean } = {}): Promise<void> {
+export async function registerExecTools($: EngineInterface, { blockChaining = true, dedicatedTools = true }: { blockChaining?: boolean; dedicatedTools?: boolean } = {}): Promise<void> {
   const execSchema = {
     type: 'object',
     properties: {
@@ -338,7 +342,7 @@ export async function registerExecTools($: EngineInterface, { blockChaining = tr
       max_output_chars: { type: 'number', description: `Output budget; default ${DEFAULT_MAX_OUTPUT_CHARS}.` },
     },
   }
-  await $.tool.register({ name: 'exec', description: EXEC_DESCRIPTION, inputSchema: execSchema, isDeferred: false })
+  await $.tool.register({ name: 'exec', description: execDescription(dedicatedTools), inputSchema: execSchema, isDeferred: false })
   await $.tool.register({ name: 'poll', description: POLL_DESCRIPTION, inputSchema: pollSchema, isDeferred: false })
 }
 

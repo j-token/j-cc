@@ -96,6 +96,7 @@ Tasks differ between sessions, so not every difference can be credited to j-cc. 
 
 | Option | Default | Description |
 |---|---|---|
+| `dedicatedTools` | `true` | Denies calls that view, search, write or edit files with commands and points to Read, Grep, Glob, Write and Edit. When off, that blocking and guidance are dropped; waits, endless loops and foreground Bash are still handled. |
 | `modelJudge` | `true` | Uses the in-CC model (Haiku) to judge background commands the rules cannot decide, bypass reasons and reply-language drift. When off, only deterministic rules are used. |
 | `blockChaining` | `false` | When on, denies calls that chain commands with `&&`, `\|\|` or `;` outside quotes. |
 | `timeAwareness` | `true` | Adds the current time to user messages in the main session and, once a minute, to a tool result, so the model works to deadlines like "in 15 minutes". |

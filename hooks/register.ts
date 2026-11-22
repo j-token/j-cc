@@ -1,7 +1,7 @@
 import type { EngineInterface, Register, RenderElement, ToolCallResult } from 'claude-code'
 import { EXEC_TOOL, POLL_TOOL, cutMainLoopWaits, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
+import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, SHELL_COMMANDS, WORKFLOW, replyLanguageNote, routing, shellToolNote, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
 import { judgedReason, type Verdict } from './rules'
@@ -232,8 +232,8 @@ function briefer(agentId: string | undefined, note: string): (r: ToolCallResult)
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
   // 체이닝은 켰을 때만 막는다. 막으면 해가 없는 `node -v; npm -v` 같은 조회도 호출 여러 번으로 쪼개진다.
-  const screenOptions = { blockChaining: options.blockChaining === true, useModel }
-  const subagentContext = subagentNote(screenOptions.blockChaining)
+  const screenOptions = { blockChaining: options.blockChaining === true, dedicatedTools: options.dedicatedTools !== false, useModel }
+  const subagentContext = subagentNote(screenOptions.blockChaining, screenOptions.dedicatedTools)
   const timeAwareness = options.timeAwareness !== false
   const askAsync = options.askAsync === true
 
@@ -398,7 +398,8 @@ export const register: Register = (on, options) => {
 
   registerExec(on, screenOptions)
 
-  const shellNotes = screenOptions.blockChaining ? `${SHELL_TOOL_NOTE} ${CHAIN_NOTE}` : SHELL_TOOL_NOTE
+  const shellToolNotes = shellToolNote(screenOptions.dedicatedTools)
+  const shellNotes = screenOptions.blockChaining ? `${shellToolNotes} ${CHAIN_NOTE}` : shellToolNotes
   // 포그라운드 셸을 막으므로 PowerShell 은 백그라운드 작업에만 쓰인다. 그 일은 Bash 로 충분해 ToolSearch 뒤로 미룬다.
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const r = await next(e)
@@ -439,7 +440,7 @@ export const register: Register = (on, options) => {
       sections: [
         ...sections,
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
-        { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
+        { id: 'j-cc:routing', text: routing(screenOptions.dedicatedTools), scope: 'session' as const },
         { id: 'j-cc:shell-commands', text: SHELL_COMMANDS, scope: 'session' as const },
         ...(timeAwareness ? [{ id: 'j-cc:time', text: TIME_SECTION, scope: 'session' as const }] : []),
       ],
