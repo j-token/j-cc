@@ -231,8 +231,8 @@ export const unwatchedRunNote = (id: number) =>
 async function refusalBeforeRun($: EngineInterface, args: ExecArgs, screenOptions: ScreenOptions): Promise<string | null> {
   const command = commandOf(args)
   if (!command.trim()) return 'cmd is required.'
-  const screened = await screen($, command, shellOf(args), true, screenOptions)
-  if ('deny' in screened) return screened.deny
+  const refusal = await screen($, command, shellOf(args), true, screenOptions)
+  if (refusal) return refusal.deny
   const running = [...runs.values()].filter(run => !isDone(run)).length
   return running >= MAX_RUNNING ? `${running} commands are still running; poll or terminate some first.` : null
 }

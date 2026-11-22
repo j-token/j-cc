@@ -103,7 +103,7 @@ Tasks differ between sessions, so not every difference can be credited to j-cc. 
 
 ## When a command is wrongly blocked
 
-The rules are not exact, so a command you really need can get blocked. In that case, add a comment giving the reason and run it again.
+The rules are not exact, so a command you really need can get blocked. In that case, add a comment giving the reason and run it again. The comment works only on a command a j-cc rule blocks; on any other command j-cc refuses the call and asks for it again without the comment, since auto mode can read an unneeded "allow" comment as an attempt to get around a check.
 
 ```
 grep -c MAGIC app.exe # j-cc:allow: the Grep tool does not search inside binary files

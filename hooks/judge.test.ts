@@ -57,6 +57,7 @@ test('백그라운드 스크립트는 모델이 끝나지 않는다고 판정할
 
   expect(JSON.stringify(waitLoop)).not.toContain('[j-cc] Blocked')
   expect(JSON.stringify(endless)).toContain('Blocked (forever, judged endless)')
+  expect(JSON.stringify(endless)).not.toContain('j-cc:allow')
   expect(seen).toEqual(['python check.py', 'python check.py', 'python report.py'])
   expect(asked.length).toBe(2)
 })

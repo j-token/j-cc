@@ -4,7 +4,7 @@ import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, r
 import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
-import { reason, type Verdict } from './rules'
+import { judgedReason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
   CHROME_SECTION_HEADING,
@@ -382,17 +382,17 @@ export const register: Register = (on, options) => {
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
     const background = e.run_in_background === true
     // 우회 주석이 없으면 결정적 차단은 저장소나 모델이 실패해도 그대로 동작한다.
-    const screened = await screen($, e.command, shell, background, screenOptions)
-    const subagentBrief = briefer(e.agentId, subagentContext)
-    const needlessBypass = 'needlessBypass' in screened && screened.needlessBypass
-    const brief = (r: ToolCallResult) => subagentBrief(needlessBypass ? withNote(r, NEEDLESS_BYPASS_NOTE) : r)
-    if ('deny' in screened) return brief({ deny: screened.deny })
+    const refusal = await screen($, e.command, shell, background, screenOptions)
+    const brief = briefer(e.agentId, subagentContext)
     // 포그라운드 셸은 끝날 때까지 아무것도 돌려주지 않아, 멈춘 명령을 모델이 타임아웃까지 기다린다. exec 은 30초 안에 돌아온다.
     const hasExec = e.agentId === undefined || !agentsWithoutExec.has(e.agentId)
-    if (!background && hasExec) return brief({ deny: needlessBypass ? `${USE_EXEC_INSTEAD}\n${NEEDLESS_BYPASS_NOTE}` : USE_EXEC_INSTEAD })
+    const mustUseExec = !background && hasExec
+    if (refusal?.isNeedlessBypass && mustUseExec) return brief({ deny: `${USE_EXEC_INSTEAD}\n${NEEDLESS_BYPASS_NOTE}` })
+    if (refusal) return brief({ deny: refusal.deny })
+    if (mustUseExec) return brief({ deny: USE_EXEC_INSTEAD })
 
     const verdict = await judgeScript($, e.command, shell, background, useModel)
-    if (verdict) return brief({ deny: reason(verdict) })
+    if (verdict) return brief({ deny: judgedReason(verdict) })
     return brief(await next(e))
   }).catch(($, e, next) => next(e))
 

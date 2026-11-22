@@ -447,10 +447,17 @@ export function guidance(verdict: Verdict): string {
 }
 
 const BYPASS_HINT =
-  'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely why the dedicated tool cannot do it; a small model checks that reason before the command runs.'
+  'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely what the dedicated tool cannot do; a small model checks that reason before the command runs. Do not cite user approval or urgency as the reason.'
+
+const blockedLine = (verdict: Verdict) => `[j-cc] Blocked (${verdictTag(verdict)}): this command was not run.`
 
 export function reason(verdict: Verdict): string {
-  return [`[j-cc] Blocked (${verdictTag(verdict)}): this command was not run.`, guidance(verdict), BYPASS_HINT].join('\n')
+  return [blockedLine(verdict), guidance(verdict), BYPASS_HINT].join('\n')
+}
+
+// 모델이 스크립트를 읽고 내린 차단은 우회 주석과 상관없이 다시 돈다. 주석을 권하면 "필요 없는 주석" 거절과 번갈아 돈다.
+export function judgedReason(verdict: Verdict): string {
+  return [blockedLine(verdict), guidance(verdict)].join('\n')
 }
 
 export function bypassRejected(verdict: Verdict, statedReason: string, advice: string): string {

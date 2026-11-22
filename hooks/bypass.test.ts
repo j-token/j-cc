@@ -38,6 +38,22 @@ test('모델은 규칙에 막힐 명령의 우회 이유만 검토하고, 막을
   expect(asked.length).toBe(2)
 })
 
+test('막을 규칙이 없는 명령에 우회 주석을 붙이면 실행하지 않고 주석 없이 다시 내라고 알린다', { options: { timeAwareness: false } }, async ($, on) => {
+  const ran: string[] = []
+  on('tool.call', ($, e) => {
+    ran.push(String((e as { command?: string }).command))
+    return { result: { stdout: '', stderr: '', interrupted: false } }
+  })
+  const command = "# j-cc:allow: user asked for this\nnode scratchpad/convert.mjs . | wc -l && git diff --stat -- content | tail -3"
+
+  const background = await $.tool.call({ tool: 'Bash', command, run_in_background: true })
+  const viaExec = await $.tool.call({ tool: 'mcp__j-cc__exec', cmd: command } as never)
+
+  expect(ran).toEqual([])
+  expect(JSON.stringify(background)).toContain('send the same command again without the comment')
+  expect(JSON.stringify(viaExec)).toContain('send the same command again without the comment')
+})
+
 test('a bypass passes when the model gives no answer', { options: { timeAwareness: false } }, async ($, on) => {
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))

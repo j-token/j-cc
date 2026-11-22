@@ -36,7 +36,7 @@ export const SHELL_COMMANDS = `# Shell commands (j-cc)
 - Rely on completion notices first. Do not add a fixed sleep (sleep 20 && ...) to guess when something will be ready; wait on the real condition with Monitor or a command that exits when it is met.
 - No new output and no exit where you expected one usually means the command is waiting for input (an unclosed heredoc or quote, a prompt) or is stuck: terminate it and fix the command.
 - Bash or PowerShell with run_in_background: true is still allowed.
-- A \`# j-cc:allow:\` comment only lifts the rule that blocked a command; it does not allow foreground Bash.
+- Add a \`# j-cc:allow: <reason>\` comment only to a command j-cc has just blocked, with a reason that names what the dedicated tool cannot do. It lifts only that rule and does not allow foreground Bash; on a command no rule blocks, j-cc refuses the call.
 - When you delegate long builds, tests or training, say in the prompt whether the subagent must wait for the result before reporting.
 
 ${SUBAGENT_RULES}`
