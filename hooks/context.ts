@@ -1,12 +1,10 @@
-// 엔진이 주입하는 목록과 도구 출력의 기본 크기를 줄인다. 스킬 설명은 모델이 스킬을 고르는 근거라 줄이지 않는다.
+// 엔진이 주입하는 목록을 줄인다. 스킬 설명은 모델이 스킬을 고르는 근거라 줄이지 않는다.
 // 입력 형식은 Claude Code 2.1.301 의 렌더링 결과다. 형식이 바뀌면 패턴이 맞지 않아 원문이 그대로 지나간다.
+// Read·Grep 의 기본 한도는 넣지 않는다. 입력을 바꾸면 auto 모드가 같은 응답의 다른 호출을 거부한다(docs/auto-mode-blocks.md).
 
 const ENTRY_DESCRIPTION_CHARS = 120
 const MCP_BLOCK_CHARS = 600
 const DEFERRED_GROUP_MIN = 8
-
-export const READ_DEFAULT_LIMIT = 500
-export const GREP_DEFAULT_HEAD_LIMIT = 100
 
 const ABBREVIATION_BEFORE_DOT = /\b(e\.g|i\.e|vs|etc)$/i
 
@@ -131,13 +129,6 @@ function groupSection(text: string, minGroup: number): string {
     out.push(`mcp__${server}__* (${countByServer.get(server)} tools; search with ToolSearch, e.g. "+${keyword} <keyword>")`)
   }
   return out.join('\n')
-}
-
-const NON_TEXT_FILE = /\.(png|jpe?g|gif|webp|bmp|pdf|ipynb)$/i
-
-export function shouldCapRead(input: { file_path: string; offset?: number; limit?: number; pages?: string; allow_large?: boolean }): boolean {
-  if (input.offset !== undefined || input.limit !== undefined || input.pages !== undefined || input.allow_large) return false
-  return !NON_TEXT_FILE.test(input.file_path)
 }
 
 export function readMoreNote(file: { startLine: number; numLines: number; totalLines: number }): string | null {

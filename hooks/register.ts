@@ -8,14 +8,11 @@ import { reason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
   CHROME_SECTION_HEADING,
-  GREP_DEFAULT_HEAD_LIMIT,
-  READ_DEFAULT_LIMIT,
   capMcpInstructions,
   groupDeferredTools,
   readMoreNote,
   prepareSkillListing,
   shortenAgentListing,
-  shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
 import { TIME_SECTION, isTimeNoteDue, promptTimeNote, toolTimeNote } from './time'
@@ -412,16 +409,12 @@ export const register: Register = (on, options) => {
   on('tool.describe', { tool: 'Monitor' }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false })).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
-    if (e.tool !== 'Read' || !shouldCapRead(e)) return next(e)
-    const r = await next({ ...e, limit: READ_DEFAULT_LIMIT })
-    if (r.deny !== undefined || r.isError === true || r.result?.type !== 'text') return r
+    const r = await next(e)
+    if (e.tool !== 'Read' || r.deny !== undefined || r.isError === true || r.result?.type !== 'text') return r
+    const askedForRange = e.offset !== undefined || e.limit !== undefined || e.pages !== undefined
+    if (askedForRange) return r
     const note = readMoreNote(r.result.file)
     return note ? withNote(r, note) : r
-  }).catch(($, e, next) => next(e))
-
-  on('tool.call', { tool: 'Grep' }, async ($, e, next) => {
-    if (String(e.tool) !== 'Grep' || (e as { head_limit?: number }).head_limit !== undefined) return next(e)
-    return next({ ...e, head_limit: GREP_DEFAULT_HEAD_LIMIT })
   }).catch(($, e, next) => next(e))
 
   for (const [type, rewrite] of ATTACHMENT_REWRITES) {
