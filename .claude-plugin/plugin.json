@@ -26,8 +26,8 @@
     "askAsync": {
       "type": "boolean",
       "title": "Ask without stopping work",
-      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question above the prompt and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set.",
-      "default": true
+      "description": "Add the mcp__j-cc__ask_async tool: Claude shows a question above the prompt and keeps working; your next message is passed to it as the reply, and the question expires after the time Claude set. Off by default.",
+      "default": false
     }
   }
 }

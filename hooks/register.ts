@@ -238,7 +238,7 @@ export const register: Register = (on, options) => {
   const screenOptions = { blockChaining: options.blockChaining === true, useModel }
   const subagentContext = subagentNote(screenOptions.blockChaining)
   const timeAwareness = options.timeAwareness !== false
-  const askAsync = options.askAsync !== false
+  const askAsync = options.askAsync === true
 
   // fork 는 부모의 맥락을 그대로 이어받으므로 건드리지 않는다.
   on('agent.spawn', async ($, e, next) => {

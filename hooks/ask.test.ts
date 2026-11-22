@@ -155,7 +155,7 @@ function registrations(on: On): string[] {
   return registered
 }
 
-test('세션이 시작되면 exec 과 함께 ask_async 를 등록한다', async ($, on) => {
+test('askAsync 를 켜면 세션이 시작될 때 exec 과 함께 ask_async 를 등록한다', { options: { askAsync: true } }, async ($, on) => {
   const registered = registrations(on)
 
   await $.session.start({ cwd: 'C:/Users/me/proj' } as never)
@@ -164,7 +164,7 @@ test('세션이 시작되면 exec 과 함께 ask_async 를 등록한다', async 
   expect(registered).toContain('ask_async')
 })
 
-test('askAsync 를 끄면 ask_async 를 등록하지 않는다', { options: { askAsync: false } }, async ($, on) => {
+test('askAsync 를 켜지 않으면 ask_async 를 등록하지 않는다', async ($, on) => {
   const registered = registrations(on)
 
   await $.session.start({ cwd: 'C:/Users/me/proj' } as never)
