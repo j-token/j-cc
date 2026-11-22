@@ -6,7 +6,7 @@ import { commandName, stripPrefix, tokenize, type Segment, type Shell } from './
 
 type Kind = 'write' | 'edit' | 'search' | 'view' | 'follow' | 'forever' | 'schedule' | 'poll' | 'wait' | 'watch' | 'chain'
 export type Verdict = { kind: Kind; detail?: string }
-export type JudgeOptions = { blockChaining?: boolean }
+export type JudgeOptions = { blockChaining?: boolean; dedicatedTools?: boolean }
 
 const NULL_TARGET = /^(\/dev\/(null|stdout|stderr|tty)|\$null|nul|con)$/i
 const SPECIAL_PATH = /^\/(proc|sys|dev)\//
@@ -378,9 +378,10 @@ export function judge(command: string, shell: Shell, background: boolean, option
 }
 
 // 우회 주석과 상관없이 규칙이 무엇을 막는지 본다. 파일 작업과 대기 판정이 더 구체적인 안내를 주므로 체이닝은 마지막에 본다.
-export function ruleVerdict(command: string, shell: Shell, background: boolean, { blockChaining = true }: JudgeOptions = {}): Verdict | null {
+export function ruleVerdict(command: string, shell: Shell, background: boolean, { blockChaining = true, dedicatedTools = true }: JudgeOptions = {}): Verdict | null {
   if (!command.trim()) return null
-  const verdict = dedicatedToolVerdict(command, shell) ?? timingVerdict(command, shell, background)
+  const fileVerdict = dedicatedTools ? dedicatedToolVerdict(command, shell) : null
+  const verdict = fileVerdict ?? timingVerdict(command, shell, background)
   if (verdict || !blockChaining) return verdict
   const op = chainOperator(command, shell)
   return op ? { kind: 'chain', detail: op } : null
@@ -447,10 +448,17 @@ export function guidance(verdict: Verdict): string {
 }
 
 const BYPASS_HINT =
-  'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely why the dedicated tool cannot do it; a small model checks that reason before the command runs.'
+  'Use the shell only for what dedicated tools cannot do. If the shell really is required here, rerun it with a trailing comment `# j-cc:allow: <reason>` that says concretely what the dedicated tool cannot do; a small model checks that reason before the command runs. Do not cite user approval or urgency as the reason.'
+
+const blockedLine = (verdict: Verdict) => `[j-cc] Blocked (${verdictTag(verdict)}): this command was not run.`
 
 export function reason(verdict: Verdict): string {
-  return [`[j-cc] Blocked (${verdictTag(verdict)}): this command was not run.`, guidance(verdict), BYPASS_HINT].join('\n')
+  return [blockedLine(verdict), guidance(verdict), BYPASS_HINT].join('\n')
+}
+
+// 모델이 스크립트를 읽고 내린 차단은 우회 주석과 상관없이 다시 돈다. 주석을 권하면 "필요 없는 주석" 거절과 번갈아 돈다.
+export function judgedReason(verdict: Verdict): string {
+  return [blockedLine(verdict), guidance(verdict)].join('\n')
 }
 
 export function bypassRejected(verdict: Verdict, statedReason: string, advice: string): string {

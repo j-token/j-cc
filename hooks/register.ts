@@ -1,21 +1,18 @@
 import type { EngineInterface, Register, RenderElement, ToolCallResult } from 'claude-code'
 import { EXEC_TOOL, POLL_TOOL, cutMainLoopWaits, isReportedTaskNotice, noteActivity, registerExec, registerExecTools } from './exec'
 import { JUDGE_REQUEST, VERDICTS_STORE_KEY, cacheKey, judgePrompt, parseLabel, rememberVerdict, scriptTargets, shouldAsk, type Evidence, type Label, type Verdicts } from './judge'
-import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, ROUTING, SHELL_COMMANDS, SHELL_TOOL_NOTE, WORKFLOW, replyLanguageNote, subagentNote } from './prompt'
+import { CHAIN_NOTE, FILE_TOOLS, LANGUAGE_NOTE, SHELL_COMMANDS, WORKFLOW, replyLanguageNote, routing, shellToolNote, subagentNote } from './prompt'
 import { NEEDLESS_BYPASS_NOTE, screen } from './bypass'
 import { OTHER_LANGUAGE_LABEL, driftToast, driftWarning, inLanguageLabel, mayBeEnglish } from './language'
-import { reason, type Verdict } from './rules'
+import { judgedReason, type Verdict } from './rules'
 import {
   CHROME_SECTION,
   CHROME_SECTION_HEADING,
-  GREP_DEFAULT_HEAD_LIMIT,
-  READ_DEFAULT_LIMIT,
   capMcpInstructions,
   groupDeferredTools,
   readMoreNote,
   prepareSkillListing,
   shortenAgentListing,
-  shouldCapRead,
 } from './context'
 import type { Shell } from './shell'
 import { TIME_SECTION, isTimeNoteDue, promptTimeNote, toolTimeNote } from './time'
@@ -235,8 +232,8 @@ function briefer(agentId: string | undefined, note: string): (r: ToolCallResult)
 export const register: Register = (on, options) => {
   const useModel = options.modelJudge !== false
   // 체이닝은 켰을 때만 막는다. 막으면 해가 없는 `node -v; npm -v` 같은 조회도 호출 여러 번으로 쪼개진다.
-  const screenOptions = { blockChaining: options.blockChaining === true, useModel }
-  const subagentContext = subagentNote(screenOptions.blockChaining)
+  const screenOptions = { blockChaining: options.blockChaining === true, dedicatedTools: options.dedicatedTools !== false, useModel }
+  const subagentContext = subagentNote(screenOptions.blockChaining, screenOptions.dedicatedTools)
   const timeAwareness = options.timeAwareness !== false
   const askAsync = options.askAsync === true
 
@@ -385,23 +382,24 @@ export const register: Register = (on, options) => {
     const shell: Shell = e.tool === 'PowerShell' ? 'powershell' : 'bash'
     const background = e.run_in_background === true
     // 우회 주석이 없으면 결정적 차단은 저장소나 모델이 실패해도 그대로 동작한다.
-    const screened = await screen($, e.command, shell, background, screenOptions)
-    const subagentBrief = briefer(e.agentId, subagentContext)
-    const needlessBypass = 'needlessBypass' in screened && screened.needlessBypass
-    const brief = (r: ToolCallResult) => subagentBrief(needlessBypass ? withNote(r, NEEDLESS_BYPASS_NOTE) : r)
-    if ('deny' in screened) return brief({ deny: screened.deny })
+    const refusal = await screen($, e.command, shell, background, screenOptions)
+    const brief = briefer(e.agentId, subagentContext)
     // 포그라운드 셸은 끝날 때까지 아무것도 돌려주지 않아, 멈춘 명령을 모델이 타임아웃까지 기다린다. exec 은 30초 안에 돌아온다.
     const hasExec = e.agentId === undefined || !agentsWithoutExec.has(e.agentId)
-    if (!background && hasExec) return brief({ deny: needlessBypass ? `${USE_EXEC_INSTEAD}\n${NEEDLESS_BYPASS_NOTE}` : USE_EXEC_INSTEAD })
+    const mustUseExec = !background && hasExec
+    if (refusal?.isNeedlessBypass && mustUseExec) return brief({ deny: `${USE_EXEC_INSTEAD}\n${NEEDLESS_BYPASS_NOTE}` })
+    if (refusal) return brief({ deny: refusal.deny })
+    if (mustUseExec) return brief({ deny: USE_EXEC_INSTEAD })
 
     const verdict = await judgeScript($, e.command, shell, background, useModel)
-    if (verdict) return brief({ deny: reason(verdict) })
+    if (verdict) return brief({ deny: judgedReason(verdict) })
     return brief(await next(e))
   }).catch(($, e, next) => next(e))
 
   registerExec(on, screenOptions)
 
-  const shellNotes = screenOptions.blockChaining ? `${SHELL_TOOL_NOTE} ${CHAIN_NOTE}` : SHELL_TOOL_NOTE
+  const shellToolNotes = shellToolNote(screenOptions.dedicatedTools)
+  const shellNotes = screenOptions.blockChaining ? `${shellToolNotes} ${CHAIN_NOTE}` : shellToolNotes
   // 포그라운드 셸을 막으므로 PowerShell 은 백그라운드 작업에만 쓰인다. 그 일은 Bash 로 충분해 ToolSearch 뒤로 미룬다.
   on('tool.describe', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const r = await next(e)
@@ -412,16 +410,12 @@ export const register: Register = (on, options) => {
   on('tool.describe', { tool: 'Monitor' }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false })).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
-    if (e.tool !== 'Read' || !shouldCapRead(e)) return next(e)
-    const r = await next({ ...e, limit: READ_DEFAULT_LIMIT })
-    if (r.deny !== undefined || r.isError === true || r.result?.type !== 'text') return r
+    const r = await next(e)
+    if (e.tool !== 'Read' || r.deny !== undefined || r.isError === true || r.result?.type !== 'text') return r
+    const askedForRange = e.offset !== undefined || e.limit !== undefined || e.pages !== undefined
+    if (askedForRange) return r
     const note = readMoreNote(r.result.file)
     return note ? withNote(r, note) : r
-  }).catch(($, e, next) => next(e))
-
-  on('tool.call', { tool: 'Grep' }, async ($, e, next) => {
-    if (String(e.tool) !== 'Grep' || (e as { head_limit?: number }).head_limit !== undefined) return next(e)
-    return next({ ...e, head_limit: GREP_DEFAULT_HEAD_LIMIT })
   }).catch(($, e, next) => next(e))
 
   for (const [type, rewrite] of ATTACHMENT_REWRITES) {
@@ -446,7 +440,7 @@ export const register: Register = (on, options) => {
       sections: [
         ...sections,
         { id: 'j-cc:workflow', text: WORKFLOW, scope: 'session' as const },
-        { id: 'j-cc:routing', text: ROUTING, scope: 'session' as const },
+        { id: 'j-cc:routing', text: routing(screenOptions.dedicatedTools), scope: 'session' as const },
         { id: 'j-cc:shell-commands', text: SHELL_COMMANDS, scope: 'session' as const },
         ...(timeAwareness ? [{ id: 'j-cc:time', text: TIME_SECTION, scope: 'session' as const }] : []),
       ],

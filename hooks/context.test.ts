@@ -6,7 +6,6 @@ import {
   readMoreNote,
   prepareSkillListing,
   shortenAgentListing,
-  shouldCapRead,
 } from './context'
 
 const SKILLS = `The following skills are available for use with the Skill tool:
@@ -133,14 +132,6 @@ test('한 서버의 지연 도구가 8개 이상이면 한 줄로 묶는다', ()
   )
 })
 
-test('Read는 범위를 직접 준 호출과 이미지, PDF에는 기본 한도를 걸지 않는다', () => {
-  expect(shouldCapRead({ file_path: 'C:/a/app.ts' })).toBe(true)
-  expect(shouldCapRead({ file_path: 'C:/a/app.ts', limit: 50 })).toBe(false)
-  expect(shouldCapRead({ file_path: 'C:/a/app.ts', offset: 10 })).toBe(false)
-  expect(shouldCapRead({ file_path: 'C:/a/shot.png' })).toBe(false)
-  expect(shouldCapRead({ file_path: 'C:/a/doc.pdf' })).toBe(false)
-})
-
 test('파일이 더 남았을 때만 이어 읽기 안내를 붙인다', () => {
   expect(readMoreNote({ startLine: 1, numLines: 500, totalLines: 1200 })).toBe(
     '[j-cc] Showed lines 1-500 of 1200. Read the rest with offset/limit, or Grep for what you need.',
@@ -148,30 +139,26 @@ test('파일이 더 남았을 때만 이어 읽기 안내를 붙인다', () => {
   expect(readMoreNote({ startLine: 1, numLines: 80, totalLines: 80 })).toBe(null)
 })
 
-test('Read 호출에 기본 한도 500줄을 걸고 남은 줄 수를 알린다', async ($, on) => {
-  const seenLimits: unknown[] = []
+test('Read와 Grep 입력은 바꾸지 않아 auto 모드가 같은 응답의 다른 호출 판정을 버리지 않게 하고, 남은 줄이 있으면 알린다', async ($, on) => {
+  const seenInputs: unknown[] = []
   on('tool.call', ($, e) => {
-    seenLimits.push((e as { limit?: number }).limit)
-    return { result: { type: 'text', file: { filePath: 'C:/a/big.ts', content: 'x', numLines: 500, startLine: 1, totalLines: 900 } } }
+    seenInputs.push({ limit: (e as { limit?: number }).limit, head_limit: (e as { head_limit?: number }).head_limit })
+    return e.tool === 'Read'
+      ? { result: { type: 'text', file: { filePath: 'C:/a/big.ts', content: 'x', numLines: 2000, startLine: 1, totalLines: 2400 } } }
+      : { result: { mode: 'files_with_matches', filenames: [], numFiles: 0 } }
   })
 
-  const r = await $.tool.call({ tool: 'Read', file_path: 'C:/a/big.ts' })
+  const read = await $.tool.call({ tool: 'Read', file_path: 'C:/a/big.ts' })
+  await $.tool.call({ tool: 'Grep', pattern: 'TODO' } as never)
+  const ranged = await $.tool.call({ tool: 'Read', file_path: 'C:/a/big.ts', limit: 2000 })
 
-  expect(seenLimits).toEqual([500])
-  expect(JSON.stringify(r)).toContain('Showed lines 1-500 of 900')
-})
-
-test('Grep 호출에 head_limit이 없으면 100을 건다', async ($, on) => {
-  const seenLimits: unknown[] = []
-  on('tool.call', ($, e) => {
-    seenLimits.push((e as { head_limit?: number }).head_limit)
-    return { result: { mode: 'files_with_matches', filenames: [], numFiles: 0 } }
-  })
-
-  await $.tool.call({ tool: 'Grep', pattern: 'TODO' })
-  await $.tool.call({ tool: 'Grep', pattern: 'TODO', head_limit: 20 })
-
-  expect(seenLimits).toEqual([100, 20])
+  expect(seenInputs).toEqual([
+    { limit: undefined, head_limit: undefined },
+    { limit: undefined, head_limit: undefined },
+    { limit: 2000, head_limit: undefined },
+  ])
+  expect(JSON.stringify(read)).toContain('Showed lines 1-2000 of 2400')
+  expect(JSON.stringify(ranged)).not.toContain('Showed lines')
 })
 
 test('남은 토큰 안내는 모델에게 보내지 않는다', async ($, on) => {

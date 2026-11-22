@@ -1,10 +1,16 @@
 {
   "name": "j-cc",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Harness tuning for Claude models in Claude Code: dedicated-tool routing, deterministic shell guards, background long-running commands. No external model or API key.",
   "author": { "name": "j-token" },
   "license": "MIT",
   "userConfig": {
+    "dedicatedTools": {
+      "type": "boolean",
+      "title": "Route file work to dedicated tools",
+      "description": "Block shell commands that only view, search, write or edit files (cat, grep, find, sed -i, heredocs, Set-Content, ...) and point Claude to Read, Grep, Glob, Write and Edit. Turn off to let the shell do file work; waits, endless loops and foreground Bash are still handled.",
+      "default": true
+    },
     "modelJudge": {
       "type": "boolean",
       "title": "Model judge for ambiguous commands",
